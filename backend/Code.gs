@@ -1,5 +1,5 @@
 /**
- * 한양대학교 ERICA 학생지원팀 근로관리 API V5
+ * 한양대학교 ERICA 학생지원팀 근로관리 API V6
  * 운영 데이터와 인증 해시의 원본은 Google Spreadsheet다.
  * 기존 행은 삭제하지 않고 initializeDatabase()가 누락 열/시트만 추가한다.
  */
@@ -9,18 +9,22 @@ let requestSpreadsheet = null;
 
 const TABLES = {
   Parts: ['partId', 'partName', 'displayOrder', 'color', 'active', 'defaultHourlyWage', 'note'],
-  Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active', 'loginId', 'passwordHash', 'passwordSalt', 'role', 'lastPasswordChangedAt', 'email', 'phone', 'hourlyWage'],
+  Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active', 'loginId', 'passwordHash', 'passwordSalt', 'role', 'lastPasswordChangedAt', 'email', 'phone', 'hourlyWage', 'displayColor'],
   Schedules: ['scheduleId', 'studentId', 'dayOfWeek', 'startTime', 'endTime', 'semesterId', 'active', 'updatedAt', 'updatedBy', 'date', 'period'],
-  WorkLogs: ['logId', 'studentId', 'date', 'clockIn', 'clockOut', 'minutes', 'status', 'note', 'scheduleId', 'partId', 'reason', 'editedBy', 'editedAt', 'createdBy', 'createdAt', 'flagCode'],
+  WorkLogs: ['logId', 'studentId', 'date', 'clockIn', 'clockOut', 'minutes', 'status', 'note', 'scheduleId', 'partId', 'reason', 'editedBy', 'editedAt', 'createdBy', 'createdAt', 'flagCode', 'sourceType', 'assemblyId'],
   Tasks: ['taskId', 'taskName', 'description', 'partId', 'studentId', 'employeeId', 'keywords', 'active', 'updatedAt', 'updatedBy'],
   Employees: ['employeeId', 'name', 'partId', 'extension', 'tasks', 'active'],
   Semesters: ['semesterId', 'semesterName', 'startDate', 'endDate', 'active', 'createdAt', 'createdBy', 'vacationStartDate', 'vacationStartedAt', 'vacationStartedBy'],
   Settings: ['key', 'value'],
   Substitutions: ['substitutionId', 'scheduleId', 'date', 'requesterStudentId', 'substituteStudentId', 'partId', 'status', 'reason', 'createdAt', 'updatedAt', 'approvedBy'],
   MigrationLog: ['migrationId', 'appliedAt', 'version', 'description', 'beforeStudents', 'afterStudents', 'beforeSchedules', 'afterSchedules'],
-  Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy'],
+  Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy', 'role', 'note', 'lastLoginAt', 'updatedAt', 'updatedBy'],
   Budgets: ['month', 'totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget', 'note', 'updatedAt', 'updatedBy', 'nationalBudget', 'internalBudget'],
   Handovers: ['handoverId', 'date', 'partId', 'authorStudentId', 'title', 'content', 'status', 'priority', 'targetStudentId', 'createdAt', 'updatedAt', 'completedAt', 'visibility', 'active', 'deletedAt', 'deletedBy', 'pinned', 'acknowledgedBy'],
+  Absences: ['absenceId', 'studentId', 'date', 'scheduleId', 'scheduledStart', 'scheduledEnd', 'type', 'reason', 'note', 'status', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'cancelledAt', 'cancelledBy'],
+  Notices: ['noticeId', 'title', 'content', 'authorId', 'authorName', 'authorRole', 'createdAt', 'updatedAt', 'startDate', 'endDate', 'pinned', 'target', 'targetValue', 'active', 'deletedAt', 'deletedBy'],
+  Assemblies: ['assemblyId', 'title', 'content', 'date', 'startTime', 'endTime', 'capacity', 'target', 'targetValue', 'place', 'creditHours', 'mode', 'status', 'managerId', 'note', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'],
+  AssemblyParticipants: ['participantId', 'assemblyId', 'studentId', 'status', 'source', 'appliedAt', 'assignedAt', 'updatedAt', 'updatedBy', 'workLogId', 'attendanceConfirmedAt'],
 };
 
 const COLUMN_WIDTHS = {
@@ -31,6 +35,10 @@ const COLUMN_WIDTHS = {
   Admins: [140, 120, 150, 120, 120, 80, 170, 170, 150],
   Budgets: [100, 130, 130, 130, 130, 240, 170, 160, 140, 140],
   Handovers: [145, 100, 120, 145, 220, 420, 110, 110, 145, 170, 170, 170, 100, 70, 170, 160, 80, 220],
+  Absences: [145, 130, 100, 145, 100, 100, 100, 220, 220, 90, 170, 150, 170, 150, 170, 150],
+  Notices: [145, 220, 420, 150, 120, 110, 170, 170, 100, 100, 80, 110, 160, 80, 170, 150],
+  Assemblies: [145, 220, 420, 100, 90, 90, 90, 120, 180, 160, 90, 100, 110, 150, 220, 170, 150, 170, 150],
+  AssemblyParticipants: [150, 145, 130, 100, 100, 170, 170, 170, 150, 145, 170],
 };
 
 function doGet(e) {
@@ -49,36 +57,50 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.5', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v6', auditRevision: '2026-09-08.6', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
       logout: () => { endSession_(request.token); return { ok: true }; },
-      adminBootstrap: () => ({ ok: true, data: readAdminData_(requireRole_(request.token, 'ADMIN')) }),
+      adminBootstrap: () => ({ ok: true, data: readAdminData_(requireAdmin_(request.token)) }),
       studentBootstrap: () => ({ ok: true, data: readStudentData_(requireRole_(request.token, 'STUDENT')) }),
-      initializeDatabase: () => { const user = requireRole_(request.token, 'ADMIN'); return { ok: true, message: initializeDatabase(actorId_(user)) }; },
-      adminUpsertStudent: () => ({ ok: true, record: adminUpsertStudent_(requireRole_(request.token, 'ADMIN'), request.record, request.initialPassword) }),
-      adminResetPassword: () => ({ ok: true, record: adminResetPassword_(requireRole_(request.token, 'ADMIN'), request.studentId, request.newPassword) }),
-      adminResetPasswordToStudentNumber: () => ({ ok: true, record: adminResetPasswordToStudentNumber_(requireRole_(request.token, 'ADMIN'), request.studentId) }),
-      adminUpsertSchedule: () => ({ ok: true, record: adminUpsertSchedule_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminDeactivateSchedule: () => ({ ok: true, record: setActive_('Schedules', 'scheduleId', request.scheduleId, false, requireRole_(request.token, 'ADMIN')) }),
-      adminUpsertWorkLog: () => ({ ok: true, record: adminUpsertWorkLog_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminCancelWorkLog: () => ({ ok: true, record: adminCancelWorkLog_(requireRole_(request.token, 'ADMIN'), request.logId, request.reason) }),
-      adminUpsertTask: () => ({ ok: true, record: adminUpsertTask_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminDeactivateTask: () => ({ ok: true, record: setActive_('Tasks', 'taskId', request.taskId, false, requireRole_(request.token, 'ADMIN')) }),
-      adminUpsertPart: () => ({ ok: true, record: adminUpsertPart_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminDeactivatePart: () => ({ ok: true, record: setActive_('Parts', 'partId', request.partId, false, requireRole_(request.token, 'ADMIN')) }),
-      adminCreateSemester: () => ({ ok: true, record: adminCreateSemester_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminUpsertSemester: () => ({ ok: true, record: adminUpsertSemester_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminStartVacation: () => ({ ok: true, record: adminStartVacation_(requireRole_(request.token, 'ADMIN'), request.semesterId) }),
-      adminActivateSemester: () => ({ ok: true, semesterId: adminActivateSemester_(requireRole_(request.token, 'ADMIN'), request.semesterId) }),
-      adminSaveSettings: () => ({ ok: true, settings: adminSaveSettings_(requireRole_(request.token, 'ADMIN'), request.settings) }),
-      adminReviewSubstitution: () => ({ ok: true, record: adminReviewSubstitution_(requireRole_(request.token, 'ADMIN'), request.substitutionId, request.status) }),
-      adminCancelSubstitution: () => ({ ok: true, record: adminCancelSubstitution_(requireRole_(request.token, 'ADMIN'), request.substitutionId) }),
-      adminUpsertBudget: () => ({ ok: true, record: adminUpsertBudget_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminUpsertHandover: () => ({ ok: true, record: adminUpsertHandover_(requireRole_(request.token, 'ADMIN'), request.record) }),
-      adminDeleteHandover: () => ({ ok: true, record: adminDeleteHandover_(requireRole_(request.token, 'ADMIN'), request.handoverId) }),
-      clockIn: () => ({ ok: true, record: clockIn_(requireRole_(request.token, 'STUDENT')) }),
+      initializeDatabase: () => { const user = requireSuperAdmin_(request.token); return { ok: true, message: initializeDatabase(actorId_(user)) }; },
+      adminUpsertStudent: () => ({ ok: true, record: adminUpsertStudent_(requireAdmin_(request.token), request.record, request.initialPassword) }),
+      adminResetPassword: () => ({ ok: true, record: adminResetPassword_(requireAdmin_(request.token), request.studentId, request.newPassword) }),
+      adminResetPasswordToStudentNumber: () => ({ ok: true, record: adminResetPasswordToStudentNumber_(requireAdmin_(request.token), request.studentId) }),
+      adminUpsertSchedule: () => ({ ok: true, record: adminUpsertSchedule_(requireAdmin_(request.token), request.record) }),
+      adminDeactivateSchedule: () => ({ ok: true, record: setActive_('Schedules', 'scheduleId', request.scheduleId, false, requireAdmin_(request.token)) }),
+      adminUpsertWorkLog: () => ({ ok: true, record: adminUpsertWorkLog_(requireAdmin_(request.token), request.record) }),
+      adminCancelWorkLog: () => ({ ok: true, record: adminCancelWorkLog_(requireAdmin_(request.token), request.logId, request.reason) }),
+      adminUpsertTask: () => ({ ok: true, record: adminUpsertTask_(requireAdmin_(request.token), request.record) }),
+      adminDeactivateTask: () => ({ ok: true, record: setActive_('Tasks', 'taskId', request.taskId, false, requireAdmin_(request.token)) }),
+      adminUpsertPart: () => ({ ok: true, record: adminUpsertPart_(requireSuperAdmin_(request.token), request.record) }),
+      adminDeactivatePart: () => ({ ok: true, record: setActive_('Parts', 'partId', request.partId, false, requireSuperAdmin_(request.token)) }),
+      adminCreateSemester: () => ({ ok: true, record: adminCreateSemester_(requireSuperAdmin_(request.token), request.record) }),
+      adminUpsertSemester: () => ({ ok: true, record: adminUpsertSemester_(requireSuperAdmin_(request.token), request.record) }),
+      adminStartVacation: () => ({ ok: true, record: adminStartVacation_(requireSuperAdmin_(request.token), request.semesterId) }),
+      adminActivateSemester: () => ({ ok: true, semesterId: adminActivateSemester_(requireSuperAdmin_(request.token), request.semesterId) }),
+      adminSaveSettings: () => ({ ok: true, settings: adminSaveSettings_(requireSuperAdmin_(request.token), request.settings) }),
+      adminReviewSubstitution: () => ({ ok: true, record: adminReviewSubstitution_(requireAdmin_(request.token), request.substitutionId, request.status) }),
+      adminCancelSubstitution: () => ({ ok: true, record: adminCancelSubstitution_(requireAdmin_(request.token), request.substitutionId) }),
+      adminUpsertBudget: () => ({ ok: true, record: adminUpsertBudget_(requireAdmin_(request.token), request.record) }),
+      adminUpsertHandover: () => ({ ok: true, record: adminUpsertHandover_(requireAdmin_(request.token), request.record) }),
+      adminDeleteHandover: () => ({ ok: true, record: adminDeleteHandover_(requireAdmin_(request.token), request.handoverId) }),
+      adminUpsertAdmin: () => ({ ok: true, record: adminUpsertAdmin_(requireSuperAdmin_(request.token), request.record, request.initialPassword) }),
+      adminResetAdminPassword: () => ({ ok: true, record: adminResetAdminPassword_(requireSuperAdmin_(request.token), request.adminId, request.newPassword) }),
+      adminDeactivateAdmin: () => ({ ok: true, record: adminDeactivateAdmin_(requireSuperAdmin_(request.token), request.adminId) }),
+      changeOwnPassword: () => ({ ok: true, changed: changeOwnPassword_(requireSessionUser_(request.token), request.currentPassword, request.newPassword) }),
+      adminUpsertAbsence: () => ({ ok: true, record: adminUpsertAbsence_(requireAdmin_(request.token), request.record) }),
+      adminCancelAbsence: () => ({ ok: true, record: adminCancelAbsence_(requireAdmin_(request.token), request.absenceId) }),
+      adminUpsertNotice: () => ({ ok: true, record: adminUpsertNotice_(requireAdmin_(request.token), request.record) }),
+      adminDeleteNotice: () => ({ ok: true, record: adminDeleteNotice_(requireAdmin_(request.token), request.noticeId) }),
+      adminUpsertAssembly: () => ({ ok: true, record: adminUpsertAssembly_(requireAdmin_(request.token), request.record) }),
+      adminAssignAssembly: () => ({ ok: true, record: adminAssignAssembly_(requireAdmin_(request.token), request.assemblyId, request.studentId) }),
+      adminCancelAssemblyParticipant: () => ({ ok: true, record: cancelAssemblyParticipant_(requireAdmin_(request.token), request.assemblyId, request.studentId) }),
+      adminConfirmAssemblyAttendance: () => ({ ok: true, record: adminConfirmAssemblyAttendance_(requireAdmin_(request.token), request.assemblyId, request.studentId) }),
+      studentApplyAssembly: () => ({ ok: true, record: studentApplyAssembly_(requireRole_(request.token, 'STUDENT'), request.assemblyId) }),
+      studentCancelAssembly: () => ({ ok: true, record: cancelAssemblyParticipant_(requireRole_(request.token, 'STUDENT'), request.assemblyId, null) }),
+      clockIn: () => ({ ok: true, record: clockIn_(requireRole_(request.token, 'STUDENT'), request.assemblyId) }),
       clockOut: () => ({ ok: true, record: clockOut_(requireRole_(request.token, 'STUDENT')) }),
       studentCreateSubstitution: () => ({ ok: true, record: studentCreateSubstitution_(requireRole_(request.token, 'STUDENT'), request.scheduleId, request.date, request.reason) }),
       studentApplySubstitution: () => ({ ok: true, record: studentApplySubstitution_(requireRole_(request.token, 'STUDENT'), request.substitutionId) }),
@@ -104,7 +126,10 @@ function adminLogin_(loginId, password) {
   if (!id || !pw) throw new Error('관리자 ID와 비밀번호를 입력하세요.');
   const admin = readTable_('Admins').find(row => String(row.loginId || '').trim() === id);
   if (!admin || !isActive_(admin.active) || !admin.passwordHash || !admin.passwordSalt || hashPassword_(pw, admin.passwordSalt) !== String(admin.passwordHash)) throw new Error('관리자 ID 또는 비밀번호를 확인하세요.');
-  const user = { role: 'ADMIN', adminId: admin.adminId, loginId: admin.loginId, name: admin.name || admin.loginId };
+  const role = normalizeAdminRole_(admin);
+  const user = { role: role, adminId: admin.adminId, loginId: admin.loginId, name: admin.name || admin.loginId };
+  admin.lastLoginAt = new Date();
+  upsertRecord_('Admins', admin);
   const token = createSession_(user);
   return { ok: true, token: token, user: user };
 }
@@ -126,9 +151,9 @@ function sessionInfo_(token) {
   if (user.role === 'STUDENT') {
     const student = findById_('Students', 'studentId', user.studentId);
     validateStudentPeriod_(student);
-  } else if (user.role === 'ADMIN') {
+  } else if (isAdminRole_(user.role)) {
     const admin = findById_('Admins', 'adminId', user.adminId);
-    if (!admin || !isActive_(admin.active) || String(admin.loginId) !== String(user.loginId)) throw new Error('관리자 권한이 해제되었습니다.');
+    if (!admin || !isActive_(admin.active) || String(admin.loginId) !== String(user.loginId) || normalizeAdminRole_(admin) !== user.role) throw new Error('관리자 권한이 변경되었거나 해제되었습니다. 다시 로그인하세요.');
   }
   return { ok: true, user: user };
 }
@@ -141,6 +166,15 @@ function createSession_(user) {
 function endSession_(token) { if (token) CacheService.getScriptCache().remove('app-session:' + String(token)); }
 function requireSession_(token) { const raw = token && CacheService.getScriptCache().get('app-session:' + String(token)); if (!raw) throw new Error('로그인이 만료되었습니다. 다시 로그인하세요.'); return JSON.parse(raw); }
 function requireRole_(token, role) { const user = sessionInfo_(token).user; if (user.role !== role) throw new Error('권한이 없습니다.'); return user; }
+function requireSessionUser_(token) { return sessionInfo_(token).user; }
+function isAdminRole_(role) { return role === 'SUPER_ADMIN' || role === 'MANAGER'; }
+function requireAdmin_(token) { const user = sessionInfo_(token).user; if (!isAdminRole_(user.role)) throw new Error('관리자 권한이 필요합니다.'); return user; }
+function requireSuperAdmin_(token) { const user = sessionInfo_(token).user; if (user.role !== 'SUPER_ADMIN') throw new Error('총괄관리자만 수행할 수 있습니다.'); return user; }
+function normalizeAdminRole_(admin) {
+  const role = String((admin || {}).role || '').toUpperCase();
+  if (role === 'SUPER_ADMIN' || role === 'MANAGER') return role;
+  return String((admin || {}).loginId || '') === 'support-admin' ? 'SUPER_ADMIN' : 'MANAGER';
+}
 
 function initializeDatabase(actorEmail) {
   const beforeStudents = countRows_('Students');
@@ -159,15 +193,31 @@ function initializeDatabase(actorEmail) {
   ensureSettingDefault_('internalWorkDefaultHourlyWage', '10320');
   ensureSettingDefault_('shortTermDefaultHourlyWage', '10320');
   ensureSettingDefault_('otherDefaultHourlyWage', '10320');
+  ensureSettingDefault_('assemblyOverbookEnabled', 'false');
   migrateStudentDefaults_();
-  const version = 'V5-WORKER-TYPE-BUDGETS-2026-09-08';
+  migrateAdminRolesAndStudentColorsV6_();
+  const version = 'V6-ROLES-ABSENCES-NOTICES-ASSEMBLIES-2026-09-08';
   const migrationApplied = readTable_('MigrationLog').some(row => row.version === version);
   if (!migrationApplied) migrateWorkerTypeBudgetsV5_(actorEmail);
   const afterStudents = countRows_('Students');
   const afterSchedules = countRows_('Schedules');
   if (beforeStudents !== afterStudents || beforeSchedules !== afterSchedules) throw new Error('마이그레이션 중 기존 행 수가 변경되어 중단했습니다.');
-  if (!migrationApplied) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '기존 workerType 유지, 국가·교내 예산 및 공유메모 확인 기능 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
-  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 근로유형별 예산 구조를 확인했습니다.';
+  if (!migrationApplied) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '3단계 권한·학생 고유색·결근·공지·소집 시트를 기존 행 삭제 없이 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
+  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V6 운영 구조를 추가했습니다.';
+}
+
+function migrateAdminRolesAndStudentColorsV6_() {
+  const palette = ['#2563EB', '#DC2626', '#059669', '#7C3AED', '#D97706', '#0891B2', '#DB2777', '#4F46E5', '#65A30D', '#9333EA'];
+  readTable_('Students').forEach((student, index) => {
+    if (!/^#[0-9A-F]{6}$/i.test(String(student.displayColor || ''))) upsertRecord_('Students', { studentId: student.studentId, displayColor: palette[index % palette.length] });
+  });
+  readTable_('Admins').forEach(admin => {
+    const patch = { adminId: admin.adminId };
+    let changed = false;
+    if (!admin.role) { patch.role = normalizeAdminRole_(admin); changed = true; }
+    if (admin.note === undefined) { patch.note = ''; changed = true; }
+    if (changed) upsertRecord_('Admins', patch);
+  });
 }
 
 function migrateWorkerTypeBudgetsV5_(actorEmail) {
@@ -204,6 +254,7 @@ function createInitialAdminAccount(loginId, initialPassword, name) {
   const record = existing || { adminId: Utilities.getUuid(), loginId: id, createdAt: new Date(), createdBy: 'admin-bootstrap' };
   record.name = String(name || '학생지원팀 관리자');
   record.active = true;
+  record.role = id === 'support-admin' ? 'SUPER_ADMIN' : 'MANAGER';
   applyPassword_(record, initialPassword);
   upsertRecord_('Admins', record);
   return { adminId: record.adminId, loginId: record.loginId, name: record.name, active: record.active };
@@ -244,7 +295,10 @@ function readAdminData_(user) {
   const students = readTable_('Students').map(sanitizeStudentForAdmin_);
   const schedules = readTable_('Schedules');
   const workLogs = withWorkLogFlags_(readTable_('WorkLogs'), students, schedules);
-  return baseData_({ students: students, schedules: schedules, workLogs: workLogs, substitutions: readTable_('Substitutions'), budgets: readTable_('Budgets'), handovers: readTable_('Handovers').filter(row => isActive_(row.active)) });
+  const data = baseData_({ students: students, schedules: schedules, workLogs: workLogs, substitutions: readTable_('Substitutions'), budgets: readTable_('Budgets'), handovers: readTable_('Handovers').filter(row => isActive_(row.active)), absences: readTable_('Absences'), notices: readTable_('Notices').filter(row => isActive_(row.active)), assemblies: readTable_('Assemblies'), assemblyParticipants: readTable_('AssemblyParticipants') });
+  data.currentUser = user;
+  data.admins = user.role === 'SUPER_ADMIN' ? readTable_('Admins').map(sanitizeAdmin_) : [];
+  return data;
 }
 
 function readStudentData_(user) {
@@ -257,9 +311,13 @@ function readStudentData_(user) {
   const samePartStudents = allStudents.filter(row => row.partId === student.partId && isActive_(row.active)).map(row => ({ studentId: row.studentId, name: row.name, partId: row.partId }));
   const substitutions = readTable_('Substitutions').filter(row => row.partId === student.partId && (row.requesterStudentId === student.studentId || row.status === 'OPEN' || row.substituteStudentId === student.studentId));
   const handovers = readTable_('Handovers').filter(row => isActive_(row.active) && (row.visibility === 'PUBLIC' || row.partId === student.partId || row.authorStudentId === student.studentId || row.targetStudentId === student.studentId));
+  const notices = readTable_('Notices').filter(row => noticeVisibleToStudent_(row, student));
+  const assemblies = readTable_('Assemblies').filter(row => assemblyVisibleToStudent_(row, student));
+  const assemblyIds = assemblies.map(row => String(row.assemblyId));
+  const participants = readTable_('AssemblyParticipants').filter(row => String(row.studentId) === String(student.studentId) && assemblyIds.indexOf(String(row.assemblyId)) >= 0);
   // 지원팀과 예비군연대가 같은 사무실의 업무 정보를 함께 확인한다.
   // 대체근무 후보는 기존 정책대로 같은 파트에만 제한한다.
-  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers });
+  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers, absences: readTable_('Absences').filter(row => String(row.studentId) === String(student.studentId)), notices: notices, assemblies: assemblies, assemblyParticipants: participants });
   data.budgets = [];
   const studentSettings = {};
   ['activeSemester', 'timezone', 'attendanceEnabled', 'substitutionEnabled', 'handoverEnabled', 'defaultWorkStartTime', 'defaultWorkEndTime'].forEach(key => { if (key in data.settings) studentSettings[key] = data.settings[key]; });
@@ -268,17 +326,21 @@ function readStudentData_(user) {
   return data;
 }
 
-function baseData_(overrides) { return Object.assign({ parts: readTable_('Parts').filter(row => isActive_(row.active)), students: [], schedules: [], workLogs: [], tasks: readTable_('Tasks'), employees: readTable_('Employees'), semesters: readTable_('Semesters'), settings: settingsObject_(), substitutions: [], substitutionCandidates: [], budgets: readTable_('Budgets'), handovers: [] }, overrides || {}); }
+function baseData_(overrides) { return Object.assign({ parts: readTable_('Parts').filter(row => isActive_(row.active)), students: [], schedules: [], workLogs: [], tasks: readTable_('Tasks'), employees: readTable_('Employees'), semesters: readTable_('Semesters'), settings: settingsObject_(), substitutions: [], substitutionCandidates: [], budgets: readTable_('Budgets'), handovers: [], admins: [], absences: [], notices: [], assemblies: [], assemblyParticipants: [] }, overrides || {}); }
 function sanitizeStudentForAdmin_(student) { const copy = Object.assign({}, student); delete copy.passwordHash; delete copy.passwordSalt; copy.hasPassword = Boolean(student.passwordHash && student.passwordSalt); return copy; }
-function sanitizeStudentForSelf_(student) { return { studentId: student.studentId, name: student.name, studentNumber: student.studentNumber, partId: student.partId, workerType: student.workerType, startDate: student.startDate, endDate: student.endDate, taskSummary: student.taskSummary, substituteTasks: student.substituteTasks, active: student.active, email: student.email, phone: student.phone }; }
+function sanitizeStudentForSelf_(student) { return { studentId: student.studentId, name: student.name, studentNumber: student.studentNumber, partId: student.partId, workerType: student.workerType, startDate: student.startDate, endDate: student.endDate, taskSummary: student.taskSummary, substituteTasks: student.substituteTasks, active: student.active, email: student.email, phone: student.phone, displayColor: student.displayColor }; }
+function sanitizeAdmin_(admin) { const copy = Object.assign({}, admin); delete copy.passwordHash; delete copy.passwordSalt; copy.role = normalizeAdminRole_(admin); copy.hasPassword = Boolean(admin.passwordHash && admin.passwordSalt); return copy; }
 
 function adminUpsertStudent_(user, input, initialPassword) {
   const incoming = Object.assign({}, input || {}); const existing = incoming.studentId && findById_('Students', 'studentId', incoming.studentId); const record = Object.assign({}, existing || {}, incoming);
+  if (user.role !== 'SUPER_ADMIN' && !existing) throw new Error('학생 계정 생성은 총괄관리자만 가능합니다.');
+  if (user.role !== 'SUPER_ADMIN' && existing && Boolean(record.active) !== Boolean(existing.active)) throw new Error('학생 계정 활성 상태 변경은 총괄관리자만 가능합니다.');
   if (!record.name || !record.studentNumber || !record.partId) throw new Error('이름, 학번, 파트를 입력하세요.');
   if (!['NATIONAL_WORK', 'INTERNAL_WORK', 'SHORT_TERM', 'OTHER'].includes(String(record.workerType))) throw new Error('근로유형을 확인하세요.');
   if (record.workerType === 'SHORT_TERM' && (!record.startDate || !record.endDate)) throw new Error('단기근로자는 시작일과 종료일이 필요합니다.');
   if (record.startDate && record.endDate && record.startDate > record.endDate) throw new Error('근무 종료일은 시작일 이후여야 합니다.');
   record.studentId = record.studentId || Utilities.getUuid(); record.loginId = record.loginId || String(record.studentNumber); record.role = 'STUDENT'; record.active = record.active !== false;
+  if (record.displayColor && !/^#[0-9A-F]{6}$/i.test(String(record.displayColor))) throw new Error('학생 색상은 HEX 형식이어야 합니다.');
   const duplicate = readTable_('Students').find(row => row.studentId !== record.studentId && (String(row.loginId || '') === String(record.loginId || '') || String(row.studentNumber || '') === String(record.studentNumber || '')));
   if (duplicate) throw new Error('이미 사용 중인 학번 또는 로그인 ID입니다.');
   if (initialPassword) applyPassword_(record, initialPassword);
@@ -289,6 +351,62 @@ function adminUpsertStudent_(user, input, initialPassword) {
 function adminResetPassword_(user, studentId, newPassword) { validatePassword_(newPassword); const student = findById_('Students', 'studentId', studentId); if (!student) throw new Error('학생을 찾을 수 없습니다.'); applyPassword_(student, newPassword); return sanitizeStudentForAdmin_(upsertRecord_('Students', student)); }
 function adminResetPasswordToStudentNumber_(user, studentId) { const student = findById_('Students', 'studentId', studentId); if (!student || !student.studentNumber) throw new Error('학번을 확인하세요.'); applyPassword_(student, String(student.studentNumber)); return sanitizeStudentForAdmin_(upsertRecord_('Students', student)); }
 function studentUpdateContact_(user, email, phone) { const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student); student.email = String(email || '').trim(); student.phone = String(phone || '').trim(); return sanitizeStudentForSelf_(upsertRecord_('Students', student)); }
+
+function adminUpsertAdmin_(user, input, initialPassword) {
+  const incoming = Object.assign({}, input || {});
+  const existing = incoming.adminId && findById_('Admins', 'adminId', incoming.adminId);
+  const record = Object.assign({}, existing || {}, incoming);
+  if (!record.name || !record.loginId) throw new Error('이름과 로그인 ID를 입력하세요.');
+  record.role = String(record.role || 'MANAGER').toUpperCase();
+  if (!['SUPER_ADMIN', 'MANAGER'].includes(record.role)) throw new Error('관리자 권한을 확인하세요.');
+  record.adminId = record.adminId || Utilities.getUuid();
+  record.active = record.active !== false;
+  record.note = safeText_(record.note, 500);
+  const duplicate = readTable_('Admins').find(row => String(row.adminId) !== String(record.adminId) && String(row.loginId || '').trim() === String(record.loginId).trim());
+  if (duplicate) throw new Error('이미 사용 중인 관리자 ID입니다.');
+  if (!existing && !initialPassword) throw new Error('초기 비밀번호를 입력하세요.');
+  if (initialPassword) applyPassword_(record, initialPassword);
+  record.createdAt = existing ? existing.createdAt : new Date();
+  record.createdBy = existing ? existing.createdBy : actorId_(user);
+  record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  if (existing && normalizeAdminRole_(existing) === 'SUPER_ADMIN' && record.role !== 'SUPER_ADMIN') assertSuperAdminRemains_(existing.adminId);
+  return sanitizeAdmin_(upsertRecord_('Admins', record));
+}
+
+function adminResetAdminPassword_(user, adminId, newPassword) {
+  const record = findById_('Admins', 'adminId', adminId);
+  if (!record) throw new Error('관리자 계정을 찾을 수 없습니다.');
+  applyPassword_(record, newPassword); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return sanitizeAdmin_(upsertRecord_('Admins', record));
+}
+
+function adminDeactivateAdmin_(user, adminId) {
+  const record = findById_('Admins', 'adminId', adminId);
+  if (!record) throw new Error('관리자 계정을 찾을 수 없습니다.');
+  if (String(record.adminId) === String(user.adminId)) throw new Error('현재 로그인한 본인 계정은 비활성화할 수 없습니다.');
+  if (normalizeAdminRole_(record) === 'SUPER_ADMIN') assertSuperAdminRemains_(record.adminId);
+  record.active = false; record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return sanitizeAdmin_(upsertRecord_('Admins', record));
+}
+
+function assertSuperAdminRemains_(excludedAdminId) {
+  const remaining = readTable_('Admins').filter(row => String(row.adminId) !== String(excludedAdminId) && isActive_(row.active) && normalizeAdminRole_(row) === 'SUPER_ADMIN');
+  if (!remaining.length) throw new Error('마지막 총괄관리자 계정은 권한 변경 또는 비활성화할 수 없습니다.');
+}
+
+function changeOwnPassword_(user, currentPassword, newPassword) {
+  validatePassword_(newPassword);
+  const table = user.role === 'STUDENT' ? 'Students' : 'Admins';
+  const idKey = user.role === 'STUDENT' ? 'studentId' : 'adminId';
+  const id = user[idKey];
+  const record = findById_(table, idKey, id);
+  if (!record || hashPassword_(String(currentPassword || ''), record.passwordSalt) !== String(record.passwordHash || '')) throw new Error('현재 비밀번호가 일치하지 않습니다.');
+  if (String(currentPassword) === String(newPassword)) throw new Error('새 비밀번호는 현재 비밀번호와 다르게 입력하세요.');
+  applyPassword_(record, newPassword);
+  if (table === 'Admins') { record.updatedAt = new Date(); record.updatedBy = actorId_(user); }
+  upsertRecord_(table, record);
+  return true;
+}
 
 function adminUpsertSchedule_(user, input) {
   const record = Object.assign({}, input || {}); const student = findById_('Students', 'studentId', record.studentId);
@@ -370,6 +488,139 @@ function optionalBudget_(value) {
   return Math.round(amount);
 }
 
+function adminUpsertAbsence_(user, input) {
+  const incoming = Object.assign({}, input || {});
+  const existing = incoming.absenceId && findById_('Absences', 'absenceId', incoming.absenceId);
+  const record = Object.assign({}, existing || {}, incoming);
+  if (!record.studentId || !record.date || !record.scheduledStart || !record.scheduledEnd) throw new Error('학생, 날짜, 예정 근무시간을 입력하세요.');
+  if (!findById_('Students', 'studentId', record.studentId)) throw new Error('학생을 찾을 수 없습니다.');
+  if (!['ABSENT', 'SICK', 'EXCUSED', 'OTHER'].includes(String(record.type))) throw new Error('결근 유형을 확인하세요.');
+  validateHalfHour_(record.scheduledStart); validateHalfHour_(record.scheduledEnd);
+  if (timeMinutes_(record.scheduledStart) >= timeMinutes_(record.scheduledEnd)) throw new Error('예정 종료시간을 확인하세요.');
+  if (readTable_('WorkLogs').some(row => String(row.studentId) === String(record.studentId) && row.date === record.date && ['WORKING', 'COMPLETE'].includes(String(row.status)))) throw new Error('실제 근무기록이 있는 날짜는 먼저 근무기록을 확인하세요.');
+  record.absenceId = record.absenceId || Utilities.getUuid();
+  record.reason = safeText_(record.reason, 500); record.note = safeText_(record.note, 1000);
+  record.status = 'ACTIVE'; record.createdAt = existing ? existing.createdAt : new Date(); record.createdBy = existing ? existing.createdBy : actorId_(user); record.updatedAt = new Date(); record.updatedBy = actorId_(user); record.cancelledAt = ''; record.cancelledBy = '';
+  return upsertRecord_('Absences', record);
+}
+
+function adminCancelAbsence_(user, absenceId) {
+  const record = findById_('Absences', 'absenceId', absenceId);
+  if (!record || record.status === 'CANCELLED') throw new Error('취소할 결근 기록을 찾을 수 없습니다.');
+  record.status = 'CANCELLED'; record.cancelledAt = new Date(); record.cancelledBy = actorId_(user); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return upsertRecord_('Absences', record);
+}
+
+function adminUpsertNotice_(user, input) {
+  const incoming = Object.assign({}, input || {});
+  const existing = incoming.noticeId && findById_('Notices', 'noticeId', incoming.noticeId);
+  if (existing && user.role !== 'SUPER_ADMIN' && String(existing.authorId) !== String(user.adminId)) throw new Error('본인이 작성한 공지만 수정할 수 있습니다.');
+  const record = Object.assign({}, existing || {}, incoming);
+  if (!record.title || !record.content) throw new Error('공지 제목과 내용을 입력하세요.');
+  if (!['ALL', 'STUDENT', 'MANAGER', 'PART'].includes(String(record.target || 'ALL'))) throw new Error('공지 대상을 확인하세요.');
+  if (record.target === 'PART' && !record.targetValue) throw new Error('공지 대상 파트를 선택하세요.');
+  if (record.startDate && record.endDate && record.startDate > record.endDate) throw new Error('공지 종료일을 확인하세요.');
+  record.noticeId = record.noticeId || Utilities.getUuid(); record.title = safeText_(record.title, 160); record.content = safeText_(record.content, 4000); record.target = record.target || 'ALL'; record.pinned = Boolean(record.pinned === true || String(record.pinned).toUpperCase() === 'TRUE'); record.active = record.active !== false;
+  record.authorId = existing ? existing.authorId : user.adminId; record.authorName = existing ? existing.authorName : user.name; record.authorRole = existing ? existing.authorRole : user.role; record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
+  return upsertRecord_('Notices', record);
+}
+
+function adminDeleteNotice_(user, noticeId) {
+  const record = findById_('Notices', 'noticeId', noticeId);
+  if (!record || !isActive_(record.active)) throw new Error('공지를 찾을 수 없습니다.');
+  if (user.role !== 'SUPER_ADMIN' && String(record.authorId) !== String(user.adminId)) throw new Error('본인이 작성한 공지만 삭제할 수 있습니다.');
+  record.active = false; record.deletedAt = new Date(); record.deletedBy = actorId_(user); record.updatedAt = new Date();
+  return upsertRecord_('Notices', record);
+}
+
+function noticeVisibleToStudent_(notice, student) {
+  if (!isActive_(notice.active)) return false;
+  const today = today_();
+  if (notice.startDate && today < notice.startDate) return false;
+  if (notice.endDate && today > notice.endDate) return false;
+  if (notice.target === 'MANAGER') return false;
+  if (notice.target === 'PART') return String(notice.targetValue) === String(student.partId);
+  return notice.target === 'ALL' || notice.target === 'STUDENT' || !notice.target;
+}
+
+function adminUpsertAssembly_(user, input) {
+  const incoming = Object.assign({}, input || {});
+  const existing = incoming.assemblyId && findById_('Assemblies', 'assemblyId', incoming.assemblyId);
+  const record = Object.assign({}, existing || {}, incoming);
+  if (!record.title || !record.date || !record.startTime || !record.endTime || !record.place) throw new Error('제목, 날짜, 시간, 장소를 입력하세요.');
+  validateHalfHour_(record.startTime); validateHalfHour_(record.endTime);
+  if (timeMinutes_(record.startTime) >= timeMinutes_(record.endTime)) throw new Error('소집 종료시간을 확인하세요.');
+  record.capacity = Math.max(1, Math.floor(Number(record.capacity || 0)));
+  if (!Number.isFinite(record.capacity)) throw new Error('필요 인원을 확인하세요.');
+  if (!['ALL', 'PART', 'WORKER_TYPE', 'STUDENT'].includes(String(record.target || 'ALL'))) throw new Error('소집 대상을 확인하세요.');
+  if (record.target !== 'ALL' && !record.targetValue) throw new Error('소집 대상 값을 선택하세요.');
+  record.mode = record.mode === 'ASSIGNED' ? 'ASSIGNED' : 'SELF';
+  record.status = existing ? String(record.status || existing.status) : 'OPEN';
+  if (!['OPEN', 'FULL', 'CLOSED', 'COMPLETED', 'CANCELLED'].includes(record.status)) throw new Error('소집 상태를 확인하세요.');
+  record.assemblyId = record.assemblyId || Utilities.getUuid(); record.title = safeText_(record.title, 160); record.content = safeText_(record.content, 4000); record.place = safeText_(record.place, 300); record.note = safeText_(record.note, 1000); record.creditHours = Boolean(record.creditHours === true || String(record.creditHours).toUpperCase() === 'TRUE'); record.managerId = record.managerId || user.adminId; record.createdAt = existing ? existing.createdAt : new Date(); record.createdBy = existing ? existing.createdBy : actorId_(user); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return upsertRecord_('Assemblies', record);
+}
+
+function assemblyVisibleToStudent_(assembly, student) {
+  if (!assembly || assembly.status === 'CANCELLED') return false;
+  if (assembly.target === 'ALL' || !assembly.target) return true;
+  if (assembly.target === 'PART') return String(assembly.targetValue) === String(student.partId);
+  if (assembly.target === 'WORKER_TYPE') return String(assembly.targetValue) === String(student.workerType);
+  if (assembly.target === 'STUDENT') return String(assembly.targetValue).split(',').map(String).indexOf(String(student.studentId)) >= 0;
+  return false;
+}
+
+function activeAssemblyParticipants_(assemblyId) { return readTable_('AssemblyParticipants').filter(row => String(row.assemblyId) === String(assemblyId) && row.status !== 'CANCELLED'); }
+function updateAssemblyCapacityStatus_(assembly) {
+  if (!assembly || !['OPEN', 'FULL'].includes(String(assembly.status))) return assembly;
+  const full = activeAssemblyParticipants_(assembly.assemblyId).length >= Number(assembly.capacity || 0);
+  assembly.status = full ? 'FULL' : 'OPEN'; assembly.updatedAt = new Date();
+  return upsertRecord_('Assemblies', assembly);
+}
+
+function studentApplyAssembly_(user, assemblyId) {
+  const assembly = findById_('Assemblies', 'assemblyId', assemblyId); const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student);
+  if (!assembly || assembly.mode !== 'SELF' || !['OPEN', 'FULL'].includes(String(assembly.status)) || !assemblyVisibleToStudent_(assembly, student)) throw new Error('신청 가능한 소집이 아닙니다.');
+  const existing = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(assemblyId) && String(row.studentId) === String(user.studentId));
+  if (existing && existing.status !== 'CANCELLED') throw new Error('이미 신청 또는 배정된 소집입니다.');
+  const overbook = settingEnabled_('assemblyOverbookEnabled');
+  if (!overbook && activeAssemblyParticipants_(assemblyId).length >= Number(assembly.capacity || 0)) throw new Error('모집 인원이 마감되었습니다.');
+  const record = Object.assign({}, existing || {}, { participantId: existing ? existing.participantId : Utilities.getUuid(), assemblyId: assemblyId, studentId: user.studentId, status: 'APPLIED', source: 'SELF', appliedAt: new Date(), assignedAt: '', updatedAt: new Date(), updatedBy: user.studentId, workLogId: '', attendanceConfirmedAt: '' });
+  const saved = upsertRecord_('AssemblyParticipants', record); updateAssemblyCapacityStatus_(assembly); return saved;
+}
+
+function adminAssignAssembly_(user, assemblyId, studentId) {
+  const assembly = findById_('Assemblies', 'assemblyId', assemblyId); const student = findById_('Students', 'studentId', studentId);
+  if (!assembly || !student || !assemblyVisibleToStudent_(assembly, student) || ['COMPLETED', 'CANCELLED'].includes(String(assembly.status))) throw new Error('배정 가능한 소집 또는 학생이 아닙니다.');
+  const existing = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(assemblyId) && String(row.studentId) === String(studentId));
+  if (existing && existing.status !== 'CANCELLED') throw new Error('이미 신청 또는 배정된 학생입니다.');
+  if (!settingEnabled_('assemblyOverbookEnabled') && activeAssemblyParticipants_(assemblyId).length >= Number(assembly.capacity || 0)) throw new Error('필요 인원을 초과할 수 없습니다.');
+  const record = Object.assign({}, existing || {}, { participantId: existing ? existing.participantId : Utilities.getUuid(), assemblyId: assemblyId, studentId: studentId, status: 'CONFIRMED', source: 'ASSIGNED', appliedAt: '', assignedAt: new Date(), updatedAt: new Date(), updatedBy: actorId_(user), workLogId: '', attendanceConfirmedAt: '' });
+  const saved = upsertRecord_('AssemblyParticipants', record); updateAssemblyCapacityStatus_(assembly); return saved;
+}
+
+function cancelAssemblyParticipant_(user, assemblyId, requestedStudentId) {
+  const studentId = user.role === 'STUDENT' ? user.studentId : requestedStudentId;
+  const participant = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(assemblyId) && String(row.studentId) === String(studentId));
+  if (!participant || participant.status === 'CANCELLED' || participant.status === 'COMPLETED') throw new Error('취소할 신청 또는 배정을 찾을 수 없습니다.');
+  if (user.role === 'STUDENT' && participant.source !== 'SELF') throw new Error('관리자 지정 소집은 학생이 취소할 수 없습니다.');
+  participant.status = 'CANCELLED'; participant.updatedAt = new Date(); participant.updatedBy = actorId_(user); const saved = upsertRecord_('AssemblyParticipants', participant); updateAssemblyCapacityStatus_(findById_('Assemblies', 'assemblyId', assemblyId)); return saved;
+}
+
+function adminConfirmAssemblyAttendance_(user, assemblyId, studentId) {
+  const assembly = findById_('Assemblies', 'assemblyId', assemblyId); const student = findById_('Students', 'studentId', studentId);
+  const participant = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(assemblyId) && String(row.studentId) === String(studentId) && row.status !== 'CANCELLED');
+  if (!assembly || !student || !participant) throw new Error('소집 참여 기록을 확인하세요.');
+  if (!(assembly.creditHours === true || String(assembly.creditHours).toUpperCase() === 'TRUE')) throw new Error('근로시간 미인정 소집입니다.');
+  if (participant.workLogId) return participant;
+  const start = parseDateTime_(assembly.date, assembly.startTime); const end = parseDateTime_(assembly.date, assembly.endTime);
+  const overlap = readTable_('WorkLogs').some(row => String(row.studentId) === String(studentId) && row.status !== 'CANCELLED' && row.clockIn && row.clockOut && start.getTime() < new Date(row.clockOut).getTime() && end.getTime() > new Date(row.clockIn).getTime());
+  if (overlap) throw new Error('같은 시간대의 기존 근무기록과 중복됩니다.');
+  const log = upsertRecord_('WorkLogs', { logId: Utilities.getUuid(), studentId: studentId, date: assembly.date, clockIn: start, clockOut: end, minutes: Math.round((end.getTime() - start.getTime()) / 60000), status: 'COMPLETE', note: '소집 참석 관리자 확인: ' + assembly.title, scheduleId: '', partId: student.partId, reason: '소집 근무 확인', editedBy: actorId_(user), editedAt: new Date(), createdBy: actorId_(user), createdAt: new Date(), flagCode: '', sourceType: 'ASSEMBLY', assemblyId: assemblyId });
+  participant.status = 'COMPLETED'; participant.workLogId = log.logId; participant.attendanceConfirmedAt = new Date(); participant.updatedAt = new Date(); participant.updatedBy = actorId_(user);
+  return upsertRecord_('AssemblyParticipants', participant);
+}
+
 function validateHandover_(record) {
   if (!record.date || !record.partId || !record.title || !record.content) throw new Error('날짜, 조직, 제목, 내용을 입력하세요.');
   if (!['OPEN', 'IN_PROGRESS', 'DONE'].includes(String(record.status))) throw new Error('인수인계 상태를 확인하세요.');
@@ -418,12 +669,20 @@ function studentAcknowledgeHandover_(user, handoverId) {
   return upsertRecord_('Handovers', record);
 }
 
-function clockIn_(user) {
+function clockIn_(user, assemblyId) {
   if (!settingEnabled_('attendanceEnabled')) throw new Error('현재 출퇴근 기록이 중지되어 있습니다.');
   const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student); const today = today_();
   if (readTable_('WorkLogs').some(row => row.studentId === student.studentId && row.status === 'WORKING')) throw new Error('이미 진행 중인 출근 기록이 있습니다.');
-  const schedules = todaySchedules_(student.studentId, today); const now = new Date(); const flag = schedules.length ? '' : 'OUTSIDE_SCHEDULE';
-  return upsertRecord_('WorkLogs', { logId: Utilities.getUuid(), studentId: student.studentId, date: today, clockIn: now, clockOut: '', minutes: 0, status: 'WORKING', note: '', scheduleId: nearestScheduleId_(schedules), partId: student.partId, reason: '', editedBy: '', editedAt: '', createdBy: student.studentId, createdAt: now, flagCode: flag });
+  let assembly = null;
+  if (assemblyId) {
+    assembly = findById_('Assemblies', 'assemblyId', assemblyId);
+    const participant = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(assemblyId) && String(row.studentId) === String(student.studentId) && row.status !== 'CANCELLED');
+    const creditHours = assembly && (assembly.creditHours === true || String(assembly.creditHours).toUpperCase() === 'TRUE');
+    if (!assembly || !participant || assembly.date !== today || !creditHours || ['CANCELLED', 'COMPLETED'].includes(String(assembly.status))) throw new Error('출근 가능한 소집이 아닙니다.');
+  }
+  if (!assembly && readTable_('Absences').some(row => String(row.studentId) === String(student.studentId) && row.date === today && row.status === 'ACTIVE')) throw new Error('오늘 결근 처리되어 있습니다. 관리자에게 결근 취소를 요청하세요.');
+  const schedules = assembly ? [] : todaySchedules_(student.studentId, today); const now = new Date(); const flag = assembly || schedules.length ? '' : 'OUTSIDE_SCHEDULE';
+  return upsertRecord_('WorkLogs', { logId: Utilities.getUuid(), studentId: student.studentId, date: today, clockIn: now, clockOut: '', minutes: 0, status: 'WORKING', note: assembly ? '소집 근무: ' + assembly.title : '', scheduleId: assembly ? '' : nearestScheduleId_(schedules), partId: student.partId, reason: '', editedBy: '', editedAt: '', createdBy: student.studentId, createdAt: now, flagCode: flag, sourceType: assembly ? 'ASSEMBLY' : 'REGULAR', assemblyId: assembly ? assembly.assemblyId : '' });
 }
 
 function clockOut_(user) {
@@ -431,7 +690,12 @@ function clockOut_(user) {
   const record = readTable_('WorkLogs').find(row => row.studentId === user.studentId && row.status === 'WORKING');
   if (!record) throw new Error('진행 중인 출근 기록을 찾을 수 없습니다.');
   const end = new Date(); const start = new Date(record.clockIn); record.clockOut = end; record.minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)); record.status = 'COMPLETE'; record.flagCode = computeLogFlag_(record, findById_('Students', 'studentId', user.studentId), readTable_('Schedules'), readTable_('WorkLogs').filter(row => row.logId !== record.logId));
-  return upsertRecord_('WorkLogs', record);
+  const saved = upsertRecord_('WorkLogs', record);
+  if (record.assemblyId) {
+    const participant = readTable_('AssemblyParticipants').find(row => String(row.assemblyId) === String(record.assemblyId) && String(row.studentId) === String(user.studentId) && row.status !== 'CANCELLED');
+    if (participant) { participant.status = 'COMPLETED'; participant.workLogId = saved.logId; participant.attendanceConfirmedAt = new Date(); participant.updatedAt = new Date(); participant.updatedBy = user.studentId; upsertRecord_('AssemblyParticipants', participant); }
+  }
+  return saved;
 }
 
 function studentCreateSubstitution_(user, scheduleId, date, reason) {
@@ -499,7 +763,7 @@ function readTable_(name) {
 
 function normalizeCell_(header, value) {
   if (!(value instanceof Date)) return value;
-  if (['startTime', 'endTime'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'HH:mm');
+  if (['startTime', 'endTime', 'scheduledStart', 'scheduledEnd'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'HH:mm');
   if (header === 'month') return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM');
   if (['semesterId', 'value'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'yyyy-M');
   if (['date', 'startDate', 'endDate', 'vacationStartDate'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');

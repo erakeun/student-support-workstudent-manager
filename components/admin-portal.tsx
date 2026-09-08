@@ -5,6 +5,8 @@ import { FormEvent, useState } from 'react';
 import { monthlyBudgetRows } from '@/lib/budget-calculation';
 import {
   BookOpenText,
+  Bell,
+  CalendarPlus,
   CalendarDays,
   ClipboardCheck,
   Clock3,
@@ -16,6 +18,7 @@ import {
   RefreshCw,
   Repeat2,
   Settings2,
+  KeyRound,
   ShieldCheck,
   UsersRound,
   WalletCards,
@@ -50,6 +53,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { PortalData, Schedule, SessionUser } from '@/lib/portal-types';
+import { AccountsPanel, AssembliesPanel, CompactOperations, NoticesPanel, PasswordPanel, StudentDot, TodayOperations } from './operations-features';
 import {
   DAYS,
   Empty,
@@ -86,7 +90,11 @@ type AdminView =
   | 'substitutions'
   | 'handovers'
   | 'budget'
-  | 'settings';
+  | 'settings'
+  | 'notices'
+  | 'assemblies'
+  | 'accounts'
+  | 'account';
 type Editor = {
   kind:
     | 'student'
@@ -112,12 +120,16 @@ const NAV: Array<{
   { id: 'schedules', label: '시간표 편집', icon: CalendarDays },
   { id: 'logs', label: '근무기록 관리', icon: ClipboardCheck },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
+  { id: 'notices', label: '공지사항', icon: Bell },
+  { id: 'assemblies', label: '소집·특별근무', icon: CalendarPlus },
   { id: 'handovers', label: '공유메모', icon: BookOpenText },
   { id: 'tasks', label: '담당업무', icon: BookOpenText },
   { id: 'budget', label: '예산', icon: WalletCards },
   { id: 'semesters', label: '학기 관리', icon: Database },
   { id: 'parts', label: '파트 관리', icon: ShieldCheck },
   { id: 'settings', label: '설정', icon: Settings2 },
+  { id: 'accounts', label: '계정 관리', icon: ShieldCheck },
+  { id: 'account', label: '내 계정', icon: KeyRound },
 ];
 
 export function AdminPortal({
@@ -144,10 +156,10 @@ export function AdminPortal({
   const [menu, setMenu] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
   const render = {
-    dashboard: <Dashboard data={data} setView={setView} />,
-    today: <Today data={data} />,
+    dashboard: <Dashboard data={data} user={user} setView={setView} onAction={onAction} />,
+    today: <Today data={data} onAction={onAction} />,
     week: <Week data={data} edit={setEditor} />,
-    students: <Students data={data} edit={setEditor} onAction={onAction} />,
+    students: <Students data={data} user={user} edit={setEditor} onAction={onAction} />,
     schedules: <Schedules data={data} edit={setEditor} onAction={onAction} />,
     logs: <Logs data={data} edit={setEditor} onAction={onAction} />,
     tasks: <Tasks data={data} edit={setEditor} onAction={onAction} />,
@@ -157,7 +169,12 @@ export function AdminPortal({
     handovers: <Handovers data={data} edit={setEditor} onAction={onAction} />,
     budget: <Budget data={data} edit={setEditor} />,
     settings: <Settings data={data} busy={busy} onAction={onAction} />,
+    notices: <NoticesPanel data={data} user={user} onAction={onAction} />,
+    assemblies: <AssembliesPanel data={data} user={user} onAction={onAction} />,
+    accounts: <AccountsPanel data={data} user={user} onAction={onAction} />,
+    account: <PasswordPanel onAction={onAction} />,
   }[view];
+  const nav = NAV.filter(item => user.role === 'SUPER_ADMIN' || !['accounts', 'parts', 'semesters', 'settings'].includes(item.id));
   return (
     <div className="min-h-screen bg-[#f3f6f8]">
       <aside
@@ -175,7 +192,7 @@ export function AdminPortal({
           </div>
         </div>
         <nav className="h-[calc(100vh-8.5rem)] space-y-1 overflow-auto p-3">
-          {NAV.map(({ id, label, icon: Icon }) => (
+          {nav.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => {
@@ -191,7 +208,7 @@ export function AdminPortal({
         </nav>
         <div className="border-t p-4">
           <p className="truncate text-xs font-bold">{user.name || user.loginId}</p>
-          <p className="truncate text-[11px] text-slate-400">{user.loginId}</p>
+          <p className="truncate text-[11px] text-slate-400">{user.loginId} · {user.role === 'SUPER_ADMIN' ? '총괄관리자' : '중간관리자'}</p>
           <Button
             variant="outline"
             size="sm"
@@ -217,6 +234,7 @@ export function AdminPortal({
               size="sm"
               variant="ghost"
               className="lg:hidden"
+              aria-label="메뉴 열기"
               onClick={() => setMenu(true)}
             >
               <Menu />
@@ -258,18 +276,25 @@ export function AdminPortal({
 
 function Dashboard({
   data,
+  user,
   setView,
+  onAction,
 }: {
   data: PortalData;
+  user: SessionUser;
   setView: (v: AdminView) => void;
+  onAction: (a: string, p?: Record<string, unknown>) => Promise<void>;
 }) {
   const today = todaySchedules(data);
   const todayLogs = data.workLogs.filter((l) => l.date === isoDate());
+  const activeAbsences = (data.absences || []).filter((row) => row.date === isoDate() && row.status === 'ACTIVE');
+  const isAbsent = (schedule: Schedule) => activeAbsences.some((row) => row.scheduleId === schedule.scheduleId || (row.studentId === schedule.studentId && row.scheduledStart === schedule.startTime));
   const working = todayLogs.filter((l) => l.status === 'WORKING');
   const completed = todayLogs.filter((l) => l.status === 'COMPLETE');
   const notCheckedIn = today.filter(
     (schedule) =>
       scheduleState(schedule) !== '종료' &&
+      !isAbsent(schedule) &&
       !todayLogs.some((log) => log.studentId === schedule.studentId),
   );
   const warnings = data.workLogs.filter((l) => l.flagCode);
@@ -289,15 +314,7 @@ function Dashboard({
         title="지원팀·예비군연대 운영 대시보드"
         description="현재·다음 근무와 확인 필요한 기록을 한 화면에서 봅니다."
       />
-      <Card className="mb-4 shadow-none">
-        <CardHeader>
-          <CardTitle>오늘 근무 현황</CardTitle>
-          <CardDescription>통합 사무실 전체 일정과 출퇴근 상태</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ShiftTable data={data} rows={today} />
-        </CardContent>
-      </Card>
+      <div className="mb-4"><TodayOperations data={data} onAction={onAction} /></div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <Metric label="오늘 예정" value={`${today.length}건`} />
         <Metric label="현재 근무중" value={`${working.length}명`} tone="blue" />
@@ -325,10 +342,10 @@ function Dashboard({
               const rows = today.filter(
                 (s) =>
                   data.students.find((st) => st.studentId === s.studentId)
-                    ?.partId === part.partId,
+                    ?.partId === part.partId && !isAbsent(s),
               );
-              const current = rows.filter((s) => scheduleState(s) === '근무중');
-              const next = rows.find((s) => scheduleState(s) === '예정');
+              const current = rows.filter((s) => todayLogs.some((log) => log.status === 'WORKING' && (log.scheduleId ? log.scheduleId === s.scheduleId : log.studentId === s.studentId)));
+              const next = rows.find((s) => scheduleState(s) === '예정' && !todayLogs.some((log) => log.scheduleId === s.scheduleId));
               return (
                 <div
                   key={part.partId}
@@ -394,6 +411,7 @@ function Dashboard({
       <Card className="mt-4 shadow-none"><CardHeader><CardTitle>공유메모·인수인계</CardTitle><CardDescription>고정·중요·미처리 순으로 최근 내용을 확인합니다.</CardDescription></CardHeader><CardContent className="grid gap-2 md:grid-cols-2">{openHandovers.slice().sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || Number(b.priority === 'IMPORTANT')-Number(a.priority === 'IMPORTANT')).slice(0,4).map(row => <button key={row.handoverId} className="rounded-lg border bg-slate-50 p-3 text-left" onClick={() => setView('handovers')}><span className="text-xs text-slate-500">{row.pinned ? '고정 · ' : ''}{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {studentName(data,row.authorStudentId)}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!openHandovers.length && <Empty>미완료 공유메모가 없습니다.</Empty>}</CardContent></Card>
       <Card className="mt-4 shadow-none"><CardHeader><CardTitle>확인 필요 근태·예산</CardTitle><CardDescription>{monthKey()} 운영 점검</CardDescription></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{budgetLabels.map(([label,value]) => { const configured=value !== '' && value !== undefined && value !== null; return <button key={label} onClick={() => setView('budget')} className="rounded-lg border p-3 text-left"><span className="text-xs text-slate-500">{label} 예산</span><b className="mt-1 block text-sm">{configured ? `${Number(value).toLocaleString()}원` : '예산 미설정'}</b></button>; })}<button onClick={() => setView('logs')} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-left"><span className="text-xs text-amber-700">근태 확인 필요</span><b className="mt-1 block text-sm">{warnings.length}건</b></button></CardContent></Card>
       <TaskSearch data={data} />
+      <CompactOperations data={data} user={user} onAction={onAction} />
     </>
   );
 }
@@ -490,7 +508,7 @@ function TaskSearch({ data }: { data: PortalData }) {
   );
 }
 
-function Today({ data }: { data: PortalData }) {
+function Today({ data, onAction }: { data: PortalData; onAction: (a: string, p?: Record<string, unknown>) => Promise<void> }) {
   return (
     <>
       <PageTitle
@@ -498,11 +516,8 @@ function Today({ data }: { data: PortalData }) {
         title="오늘 근무"
         description="파트별 정규 일정과 실제 출퇴근 상태를 함께 확인합니다."
       />
-      <Card className="shadow-none">
-        <CardContent className="p-5">
-          <ShiftTable data={data} rows={todaySchedules(data)} />
-        </CardContent>
-      </Card>
+      <TodayOperations data={data} onAction={onAction} />
+      <Card className="mt-4 shadow-none"><CardHeader><CardTitle>상세 목록</CardTitle><CardDescription>기존 표 형식도 함께 유지합니다.</CardDescription></CardHeader><CardContent><ShiftTable data={data} rows={todaySchedules(data)} /></CardContent></Card>
     </>
   );
 }
@@ -531,7 +546,7 @@ function ShiftTable({ data, rows }: { data: PortalData; rows: Schedule[] }) {
                 <TableCell className="font-mono">
                   {s.startTime}–{s.endTime}
                 </TableCell>
-                <TableCell className="font-bold">{st?.name}</TableCell>
+                <TableCell className="font-bold"><StudentDot data={data} studentId={s.studentId} /></TableCell>
                 <TableCell>
                   <Badge
                     variant="outline"
@@ -634,7 +649,8 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
                             return (
                               <button
                                 key={s.scheduleId}
-                                className={`mr-1 inline-block rounded-md border px-2 py-1 text-xs font-bold ${PART_TONES[st?.partId || '']}`}
+                                className="mr-1 inline-block rounded-md border px-2 py-1 text-xs font-bold text-white"
+                                style={{ backgroundColor: st?.displayColor || '#64748b', borderColor: st?.displayColor || '#64748b' }}
                                 onClick={() => edit({ kind: 'schedule', record: s as unknown as Record<string, unknown> })}
                               >
                                 {st?.name}
@@ -656,15 +672,17 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
 
 function MonthCalendar({ data, items, edit }: { data: PortalData; items: Array<{ date: string; day: number; rows: Schedule[] }>; edit: (e: Editor) => void }) {
   const leading = items.length ? Math.max(0, items[0].day - 1) : 0;
-  return <Card className="overflow-auto shadow-none"><CardContent className="min-w-[760px] p-4"><div className="grid grid-cols-5 border-l border-t bg-white">{['월','화','수','목','금'].map(day => <div key={day} className="border-b border-r bg-slate-50 p-2 text-center text-xs font-black text-slate-500">{day}</div>)}{Array.from({length: leading}).map((_, index) => <div key={`blank-${index}`} className="min-h-28 border-b border-r bg-slate-50/60" />)}{items.map(item => { const groups = item.rows.slice().sort((a,b) => minutes(a.startTime)-minutes(b.startTime)).reduce<Record<string, Schedule[]>>((acc,row) => { (acc[row.startTime] ||= []).push(row); return acc; }, {}); return <div key={item.date} className="min-h-28 border-b border-r p-2"><b className="text-xs text-slate-600">{Number(item.date.slice(-2))}일 {DAYS[item.day]}</b><div className="mt-2 space-y-1.5">{Object.entries(groups).map(([time, schedules]) => <div key={time} className="flex items-start gap-1.5 text-xs"><span className="w-10 shrink-0 font-mono font-bold text-slate-500">{time}</span><div className="flex flex-wrap gap-1">{schedules.map(schedule => { const student = data.students.find(row => row.studentId === schedule.studentId); return <button key={`${item.date}-${schedule.scheduleId}`} onClick={() => edit({kind:'schedule', record: schedule as unknown as Record<string, unknown>})} className={`rounded border px-1.5 py-0.5 font-bold ${PART_TONES[student?.partId || '']}`} title={`${partName(data, student?.partId || '')} · ${workerTypeName(student?.workerType)} · ${schedule.startTime}–${schedule.endTime}`}>{student?.name}</button>; })}</div></div>)}</div></div>; })}</div></CardContent></Card>;
+  return <Card className="overflow-auto shadow-none"><CardContent className="min-w-[760px] p-4"><div className="grid grid-cols-5 border-l border-t bg-white">{['월','화','수','목','금'].map(day => <div key={day} className="border-b border-r bg-slate-50 p-2 text-center text-xs font-black text-slate-500">{day}</div>)}{Array.from({length: leading}).map((_, index) => <div key={`blank-${index}`} className="min-h-28 border-b border-r bg-slate-50/60" />)}{items.map(item => { const groups = item.rows.slice().sort((a,b) => minutes(a.startTime)-minutes(b.startTime)).reduce<Record<string, Schedule[]>>((acc,row) => { (acc[row.startTime] ||= []).push(row); return acc; }, {}); return <div key={item.date} className="min-h-28 border-b border-r p-2"><b className="text-xs text-slate-600">{Number(item.date.slice(-2))}일 {DAYS[item.day]}</b><div className="mt-2 space-y-1.5">{Object.entries(groups).map(([time, schedules]) => <div key={time} className="flex items-start gap-1.5 text-xs"><span className="w-10 shrink-0 font-mono font-bold text-slate-500">{time}</span><div className="flex flex-wrap gap-1">{schedules.map(schedule => { const student = data.students.find(row => row.studentId === schedule.studentId); return <button key={`${item.date}-${schedule.scheduleId}`} onClick={() => edit({kind:'schedule', record: schedule as unknown as Record<string, unknown>})} className="rounded border px-1.5 py-0.5 font-bold text-white" style={{ backgroundColor: student?.displayColor || '#64748b', borderColor: student?.displayColor || '#64748b' }} title={`${partName(data, student?.partId || '')} · ${workerTypeName(student?.workerType)} · ${schedule.startTime}–${schedule.endTime}`}>{student?.name}</button>; })}</div></div>)}</div></div>; })}</div></CardContent></Card>;
 }
 
 function Students({
   data,
+  user,
   edit,
   onAction,
 }: {
   data: PortalData;
+  user: SessionUser;
   edit: (e: Editor) => void;
   onAction: (a: string, p?: Record<string, unknown>) => Promise<void>;
 }) {
@@ -675,10 +693,10 @@ function Students({
         title="근로학생 관리"
         description="학생 정보, 계정, 근로유형과 기간을 웹에서 관리합니다."
         action={
-          <Button onClick={() => edit({ kind: 'student' })}>
+          user.role === 'SUPER_ADMIN' ? <Button onClick={() => edit({ kind: 'student' })}>
             <Plus />
             학생 추가
-          </Button>
+          </Button> : undefined
         }
       />
       <Card className="overflow-auto shadow-none">
@@ -700,7 +718,7 @@ function Students({
             {data.students.map((s) => (
               <TableRow key={s.studentId}>
                 <TableCell>
-                  <b>{s.name}</b>
+                  <b><StudentDot data={data} studentId={s.studentId} /></b>
                   <small className="block text-slate-400">
                     {s.loginId || '로그인 ID 미설정'}
                   </small>
@@ -748,7 +766,7 @@ function Students({
                       수정
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => { void onAction('adminResetPasswordToStudentNumber', { studentId: s.studentId }).catch(() => undefined); }}>학번으로 초기화</Button>
-                    {s.active && (
+                    {s.active && user.role === 'SUPER_ADMIN' && (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1377,6 +1395,7 @@ function Settings({
             <div className="grid gap-3 sm:grid-cols-3"><label className="field-label">출퇴근<NativeSelect name="attendanceEnabled" defaultValue={data.settings.attendanceEnabled || 'true'}><NativeSelectOption value="true">허용</NativeSelectOption><NativeSelectOption value="false">중지</NativeSelectOption></NativeSelect></label><label className="field-label">대체근무<NativeSelect name="substitutionEnabled" defaultValue={data.settings.substitutionEnabled || 'true'}><NativeSelectOption value="true">허용</NativeSelectOption><NativeSelectOption value="false">중지</NativeSelectOption></NativeSelect></label><label className="field-label">인수인계<NativeSelect name="handoverEnabled" defaultValue={data.settings.handoverEnabled || 'true'}><NativeSelectOption value="true">허용</NativeSelectOption><NativeSelectOption value="false">중지</NativeSelectOption></NativeSelect></label></div>
             <Button type="submit" disabled={busy}>설정 저장</Button>
           </form>
+          <div className="mt-6 border-t pt-5"><b className="text-sm">운영 DB 구조 확인</b><p className="mt-1 text-xs text-slate-500">기존 행은 삭제하지 않고 누락된 열·시트와 학생 고유색만 추가합니다.</p><Button type="button" variant="outline" className="mt-3" disabled={busy} onClick={() => void onAction('initializeDatabase').catch(() => undefined)}>비파괴 migration 실행</Button></div>
         </CardContent>
       </Card>
     </>
@@ -1618,10 +1637,12 @@ function StudentFields({
           <NativeSelectOption value="NATIONAL_WORK">
             국가근로
           </NativeSelectOption>
-          <NativeSelectOption value={r.workerType === 'INTERNAL_WORK' ? 'INTERNAL_WORK' : 'OTHER'}>교내근로</NativeSelectOption>
+          <NativeSelectOption value="INTERNAL_WORK">교내근로</NativeSelectOption>
           <NativeSelectOption value="SHORT_TERM">단기근로</NativeSelectOption>
+          <NativeSelectOption value="OTHER">기타</NativeSelectOption>
         </NativeSelect>
       </label>
+      <label className="field-label">학생 고유색<Input name="displayColor" type="color" defaultValue={String(r.displayColor || '#2563EB')} /></label>
       <label className="field-label">
         상태
         <NativeSelect

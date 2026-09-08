@@ -4,6 +4,8 @@
 import { FormEvent, useState } from 'react';
 import {
   BookOpenText,
+  Bell,
+  CalendarPlus,
   CalendarDays,
   Clock3,
   Home,
@@ -29,6 +31,7 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import type { PortalData, SessionUser } from '@/lib/portal-types';
+import { AssembliesPanel, NoticesPanel, PasswordPanel } from './operations-features';
 import {
   DAYS,
   Empty,
@@ -55,12 +58,16 @@ type StudentView =
   | 'handovers'
   | 'substitutions'
   | 'wiki'
-  | 'profile';
+  | 'profile'
+  | 'notices'
+  | 'assemblies';
 const NAV: Array<{ id: StudentView; label: string; icon: typeof Home }> = [
   { id: 'home', label: '홈', icon: Home },
   { id: 'attendance', label: '출퇴근', icon: Clock3 },
   { id: 'schedule', label: '내 시간표', icon: CalendarDays },
   { id: 'logs', label: '내 근무기록', icon: ScrollText },
+  { id: 'notices', label: '공지', icon: Bell },
+  { id: 'assemblies', label: '소집', icon: CalendarPlus },
   { id: 'handovers', label: '공유메모', icon: BookOpenText },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
   { id: 'wiki', label: '담당업무', icon: BookOpenText },
@@ -204,6 +211,7 @@ export function StudentPortal({
           </CardContent>
         </Card>
       </section>
+      <section className="mt-5 grid gap-4 lg:grid-cols-2"><NoticesPanel data={data} user={user} onAction={onAction} compact /><AssembliesPanel data={data} user={user} onAction={onAction} compact /></section>
       <Card className="mt-5 shadow-none"><CardHeader><CardTitle>근무 공유메모</CardTitle><CardDescription>다음 근무자에게 전달된 최근 미처리 내용입니다.</CardDescription></CardHeader><CardContent className="space-y-2">{(data.handovers || []).filter(row => row.status !== 'DONE').sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).slice(0,3).map(row => <button key={row.handoverId} onClick={() => setView('handovers')} className="block w-full rounded-lg border bg-slate-50 p-3 text-left"><span className="text-xs text-slate-500">{row.pinned ? '고정 · ' : ''}{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {row.date}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!(data.handovers || []).some(row => row.status !== 'DONE') && <Empty>최근 공유메모가 없습니다.</Empty>}</CardContent></Card>
     </>
   );
@@ -260,12 +268,14 @@ export function StudentPortal({
           <LogsView data={data} month={month} setMonth={setMonth} />
         )}{' '}
         {view === 'handovers' && <HandoversView data={data} busy={busy} onAction={onAction} />}{' '}
+        {view === 'notices' && <NoticesPanel data={data} user={user} onAction={onAction} />}{' '}
+        {view === 'assemblies' && <AssembliesPanel data={data} user={user} onAction={onAction} />}{' '}
         {view === 'wiki' && <WikiView data={data} />}{' '}
         {view === 'substitutions' && (
           <SubstitutionView data={data} busy={busy} onAction={onAction} />
         )}
         {view === 'profile' && (
-          <ProfileView data={data} busy={busy} onAction={onAction} />
+          <div className="space-y-4"><ProfileView data={data} busy={busy} onAction={onAction} /><PasswordPanel onAction={onAction} /></div>
         )}
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t bg-white px-1 py-1.5 sm:hidden">

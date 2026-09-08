@@ -78,7 +78,7 @@ test('날짜 지정·과거 학기·주말 일정의 비용 혼입을 차단한�
 test('매 API 호출은 비활성·기간 종료 학생 및 해제된 관리자 세션을 거부한다',()=>{
   const b=backend();b.findById_=()=>({active:false});assert.throws(()=>b.requireRole_('TEST','STUDENT'),/활성 학생/);
   b.findById_=()=>({active:true,endDate:'2026-01-01'});b.today_=()=> '2026-09-08';assert.throws(()=>b.requireRole_('TEST','STUDENT'),/종료일/);
-  b.CacheService.getScriptCache=()=>({get:()=>JSON.stringify({role:'ADMIN',adminId:'TEST_ADMIN',loginId:'TEST'})});b.findById_=()=>({active:false,loginId:'TEST'});assert.throws(()=>b.requireRole_('TEST','ADMIN'),/해제/);
+  b.CacheService.getScriptCache=()=>({get:()=>JSON.stringify({role:'SUPER_ADMIN',adminId:'TEST_ADMIN',loginId:'TEST'})});b.findById_=()=>({active:false,loginId:'TEST',role:'SUPER_ADMIN'});assert.throws(()=>b.requireAdmin_('TEST'),/해제/);
 });
 test('다른 학생 공유메모 수정·삭제는 서버에서 거부한다',()=>{
   const b=backend();b.settingEnabled_=()=>true;b.validateStudentPeriod_=()=>{};b.findById_=(table)=>table==='Students'?{studentId:'TEST_A',partId:'SUPPORT'}:{handoverId:'TEST_NOTE_B',authorStudentId:'TEST_B',active:true};
@@ -97,7 +97,7 @@ test('월 예산 미설정·0원·음수 입력은 구분한다',()=>{
 test('저장 요청은 잠금 실패 시 쓰지 않고 오류 발생 후에도 잠금을 해제한다',()=>{
   const b=backend();let acquired=false,released=0,writes=0;
   b.LockService={getScriptLock:()=>({tryLock:()=>acquired,releaseLock:()=>released++})};
-  b.requireRole_=()=>({role:'ADMIN'});b.adminUpsertBudget_=()=>{writes++;throw new Error('TEST_FAILURE');};
+  b.requireAdmin_=()=>({role:'MANAGER'});b.adminUpsertBudget_=()=>{writes++;throw new Error('TEST_FAILURE');};
   assert.equal(b.route_({action:'adminUpsertBudget'}).ok,false);assert.equal(writes,0);assert.equal(released,0);
   acquired=true;assert.equal(b.route_({action:'adminUpsertBudget'}).error,'TEST_FAILURE');assert.equal(writes,1);assert.equal(released,1);
 });

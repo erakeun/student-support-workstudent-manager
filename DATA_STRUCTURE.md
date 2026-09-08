@@ -5,7 +5,7 @@
 | 시트 | 역할 | 주요 규칙 |
 |---|---|---|
 | Parts | 조직 | 기본 `SUPPORT`·`RESERVE`, 새 조직 UI 추가 가능 |
-| Students | 학생·로그인·근로유형 | 연락처·개별 시급, 인증 해시와 관리자 메모는 학생 API에서 제외 |
+| Students | 학생·로그인·근로유형 | 연락처·개별 시급·고유색, 인증 해시와 관리자 메모는 학생 API에서 제외 |
 | Schedules | 학기별 정규·특정일 예정 | 월=1∼금=5, 30분 단위, 선택적 `date` |
 | WorkLogs | 실제 출·퇴근 | 누적시간의 기준, 수정자·수정시각 보존 |
 | Tasks | 담당업무·근로 위키 | 학생에게는 본인 파트/공통 항목만 반환 |
@@ -14,25 +14,33 @@
 | Settings | 활성 학기·시간대·관리자 | `key`/`value` |
 | Substitutions | 대체근무 요청·신청·승인 | 요청자·대체자·요청의 `partId` 일치 필수 |
 | MigrationLog | 비파괴 마이그레이션 증거 | 전·후 학생·시간표 행 수 기록 |
-| Admins | 일반 관리자 계정 | 로그인 ID와 salt 해시, 활성 상태 |
+| Admins | 관리자 계정 | SUPER_ADMIN/MANAGER, 로그인 ID와 salt 해시, 활성·최근 로그인·감사 필드 |
 | Budgets | 월·근로유형별 예산 | 전체·국가근로·교내근로·단기근로 예산과 감사 필드 |
 | Handovers | 학생·관리자 공유메모 | 공개범위·상태·중요도·고정·확인, 소프트 삭제 |
+| Absences | 결근 | 예정시간 보존, 유형·사유·등록/수정/취소 감사 이력 |
+| Notices | 공지 | 대상·기간·고정·활성 상태, 관리자 작성자 권한 |
+| Assemblies | 소집·특별근무 | 대상·방식·정원·장소·근로시간 인정 여부·상태 |
+| AssemblyParticipants | 소집 참여 | 신청/배정/취소/완료와 선택적 WorkLogs 연결 |
 
 ## 컬럼
 
 - `Parts`: partId, partName, displayOrder, color, active, defaultHourlyWage, note
-- `Students`: studentId, name, studentNumber, partId, workerType, startDate, endDate, taskSummary, workMemo, contactMemo, specialNote, substituteTasks, active, loginId, passwordHash, passwordSalt, role, lastPasswordChangedAt, email, phone, hourlyWage
-- `Schedules`: scheduleId, studentId, dayOfWeek, startTime, endTime, semesterId, active, updatedAt, updatedBy, date
-- `WorkLogs`: logId, studentId, date, clockIn, clockOut, minutes, status, note, scheduleId, partId, reason, editedBy, editedAt, createdBy, createdAt, flagCode
+- `Students`: studentId, name, studentNumber, partId, workerType, startDate, endDate, taskSummary, workMemo, contactMemo, specialNote, substituteTasks, active, loginId, passwordHash, passwordSalt, role, lastPasswordChangedAt, email, phone, hourlyWage, displayColor
+- `Schedules`: scheduleId, studentId, dayOfWeek, startTime, endTime, semesterId, active, updatedAt, updatedBy, date, period
+- `WorkLogs`: logId, studentId, date, clockIn, clockOut, minutes, status, note, scheduleId, partId, reason, editedBy, editedAt, createdBy, createdAt, flagCode, sourceType, assemblyId
 - `Tasks`: taskId, taskName, description, partId, studentId, employeeId, keywords, active, updatedAt, updatedBy
 - `Employees`: employeeId, name, partId, extension, tasks, active
-- `Semesters`: semesterId, semesterName, startDate, endDate, active, createdAt, createdBy
+- `Semesters`: semesterId, semesterName, startDate, endDate, active, createdAt, createdBy, vacationStartDate, vacationStartedAt, vacationStartedBy
 - `Settings`: key, value
 - `Substitutions`: substitutionId, scheduleId, date, requesterStudentId, substituteStudentId, partId, status, reason, createdAt, updatedAt, approvedBy
 - `MigrationLog`: migrationId, appliedAt, version, description, beforeStudents, afterStudents, beforeSchedules, afterSchedules
-- `Admins`: adminId, name, loginId, passwordHash, passwordSalt, active, lastPasswordChangedAt, createdAt, createdBy
+- `Admins`: adminId, name, loginId, passwordHash, passwordSalt, active, lastPasswordChangedAt, createdAt, createdBy, role, note, lastLoginAt, updatedAt, updatedBy
 - `Budgets`: month, totalBudget, supportBudget, reserveBudget, shortTermBudget, note, updatedAt, updatedBy, nationalBudget, internalBudget. `supportBudget`·`reserveBudget`은 V4 호환용 보존 열이며 V5 계산에는 사용하지 않습니다.
 - `Handovers`: handoverId, date, partId, authorStudentId, title, content, status, priority, targetStudentId, createdAt, updatedAt, completedAt, visibility, active, deletedAt, deletedBy, pinned, acknowledgedBy
+- `Absences`: absenceId, studentId, date, scheduleId, scheduledStart, scheduledEnd, type, reason, note, status, createdAt, createdBy, updatedAt, updatedBy, cancelledAt, cancelledBy
+- `Notices`: noticeId, title, content, authorId, authorName, authorRole, createdAt, updatedAt, startDate, endDate, pinned, target, targetValue, active, deletedAt, deletedBy
+- `Assemblies`: assemblyId, title, content, date, startTime, endTime, capacity, target, targetValue, place, creditHours, mode, status, managerId, note, createdAt, createdBy, updatedAt, updatedBy
+- `AssemblyParticipants`: participantId, assemblyId, studentId, status, source, appliedAt, assignedAt, updatedAt, updatedBy, workLogId, attendanceConfirmedAt
 
 ## 상태·유형
 
@@ -41,10 +49,12 @@
 - `Substitutions.status`: `OPEN`, `APPLIED`, `APPROVED`, `REJECTED`, `CANCELLED`
 - `flagCode`: `MISSING_CLOCK_OUT`, `INVALID_TIME`, `DUPLICATE_DAY`, `INACTIVE_STUDENT`, `SCHEDULE_MISMATCH`, `OUTSIDE_SCHEDULE`
 - `Handovers.status`: `OPEN`, `IN_PROGRESS`, `DONE`; `priority`: `NORMAL`, `IMPORTANT`
+- `Absences.type`: `ABSENT`, `SICK`, `EXCUSED`, `OTHER`; `status`: `ACTIVE`, `CANCELLED`
+- `Assemblies.status`: `OPEN`, `FULL`, `CLOSED`, `COMPLETED`, `CANCELLED`; `mode`: `SELF`, `ASSIGNED`
 
 ## 보안 경계
 
-- 관리자는 `Admins` 행의 일반 ID/PW 해시 검증 후 앱 세션을 발급받습니다. Google OAuth나 한양대 조직 인증에 의존하지 않습니다.
+- 관리자는 `Admins` 행의 일반 ID/PW 해시 검증 후 앱 세션을 발급받습니다. `support-admin`은 SUPER_ADMIN으로 유지되고 MANAGER는 관리자 계정·핵심 설정 API가 서버에서 차단됩니다.
 - 학생 세션은 활성 `Students` 행의 해시 검증 후만 발급됩니다.
 - 학생 bootstrap은 본인 `Students`, `Schedules`, `WorkLogs`와 본인 파트 위키·대체근무만 반환합니다.
 - `passwordHash`, `passwordSalt`, 개별 시급, 관리자 메모, 다른 학생 기록은 학생 응답에 포함되지 않습니다. 학생 본인에게만 본인 학번·이메일·전화번호를 반환합니다.

@@ -18,7 +18,7 @@ test('런타임 설정에는 공개 API URL만 있고 인증정보와 실제 학
   assert.doesNotMatch(demo, /stu-2026-/);
 });
 
-test('V5 Apps Script는 기존 테이블과 예산·공유메모를 비파괴적으로 보장한다', () => {
+test('V6 Apps Script는 기존 테이블과 신규 운영 시트를 비파괴적으로 보장한다', () => {
   const source = backend();
   for (const table of [
     'Parts',
@@ -34,6 +34,10 @@ test('V5 Apps Script는 기존 테이블과 예산·공유메모를 비파괴적
     'Admins',
     'Budgets',
     'Handovers',
+    'Absences',
+    'Notices',
+    'Assemblies',
+    'AssemblyParticipants',
   ]) {
     assert.match(source, new RegExp(`${table}:`));
   }
@@ -51,7 +55,8 @@ test('V5 Apps Script는 기존 테이블과 예산·공유메모를 비파괴적
 test('관리자와 학생은 서버 세션·역할·필터로 분리된다', () => {
   const source = backend();
   assert.doesNotMatch(source, /authorizePortal_|requireHanyangUser_|requirePortalUser_/);
-  assert.ok(source.includes("requireRole_(request.token, 'ADMIN')"));
+  assert.ok(source.includes('requireAdmin_(request.token)'));
+  assert.ok(source.includes('requireSuperAdmin_(request.token)'));
   assert.ok(source.includes("requireRole_(request.token, 'STUDENT')"));
   assert.match(source, /studentLogin_/);
   assert.match(source, /adminLogin_/);
@@ -128,11 +133,11 @@ test('프론트엔드는 관리자·학생 ID/PW를 앱 세션으로 교환하�
   assert.match(api, /adminLogin/);
   assert.match(api, /studentLogin/);
   assert.doesNotMatch(api, /Hanyang|hanyangToken|AUTH_URL/);
-  assert.match(api, /REQUEST_TIMEOUT_MS = 20_000/);
+  assert.match(api, /REQUEST_TIMEOUT_MS = 60_000/);
   assert.match(api, /controller\.abort\(\)/);
   assert.match(
     api,
-    /role === 'ADMIN' \? 'adminBootstrap' : 'studentBootstrap'/,
+    /role === 'STUDENT' \? 'studentBootstrap' : 'adminBootstrap'/,
   );
 });
 
@@ -182,6 +187,31 @@ test('관리자와 학생 화면에 인수인계·예산 설정·월간 달력 �
   assert.match(admin, /전체 근로유형/);
   assert.match(admin, /grid-cols-5/);
   assert.doesNotMatch(admin, /\{\['일','월','화','수','목','금','토'\]/);
+});
+
+test('V6 권한·비밀번호·색상·결근·공지·소집을 서버와 역할별 UI에 연결한다', () => {
+  const source = backend();
+  const admin = read('components/admin-portal.tsx');
+  const student = read('components/student-portal.tsx');
+  const operations = read('components/operations-features.tsx');
+  for (const marker of [
+    'SUPER_ADMIN', 'MANAGER', 'normalizeAdminRole_', 'assertSuperAdminRemains_',
+    'changeOwnPassword_', 'displayColor', 'adminUpsertAbsence_', 'adminCancelAbsence_',
+    'adminUpsertNotice_', 'adminDeleteNotice_', 'adminUpsertAssembly_',
+    'studentApplyAssembly_', 'cancelAssemblyParticipant_', 'adminConfirmAssemblyAttendance_',
+  ]) assert.match(source, new RegExp(marker));
+  assert.match(source, /학생 계정 생성은 총괄관리자만/);
+  assert.match(source, /본인이 작성한 공지만 삭제/);
+  assert.match(source, /같은 시간대의 기존 근무기록과 중복/);
+  assert.match(admin, /TodayOperations/);
+  assert.match(admin, /AccountsPanel/);
+  assert.match(student, /NoticesPanel/);
+  assert.match(student, /AssembliesPanel/);
+  assert.match(operations, /현재 근무중/);
+  assert.match(operations, /다음 근무/);
+  assert.match(operations, /미출근/);
+  assert.match(operations, /결근 처리/);
+  assert.match(operations, /비밀번호 변경/);
 });
 
 test('GitHub Pages와 Sites 정적 배포 설정을 계속 사용한다', () => {

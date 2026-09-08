@@ -18,7 +18,7 @@ declare global {
 const DEFAULT_API_URL =
   'https://script.google.com/macros/s/AKfycbzTUixfpnPdm55NS6gUI717QCnqH39Yd3tXpCTCldQ7Db_KJATjntE37sCQpI2OTSiUPg/exec';
 const APP_SESSION_KEY = 'workPortalAppSession';
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export function getApiUrl() {
   if (typeof window === 'undefined') return '';
@@ -96,7 +96,7 @@ export async function loadRoleData(
 ): Promise<PortalData> {
   const token = getAppSessionToken();
   if (!token) throw new Error('로그인이 필요합니다.');
-  const action = role === 'ADMIN' ? 'adminBootstrap' : 'studentBootstrap';
+  const action = role === 'STUDENT' ? 'studentBootstrap' : 'adminBootstrap';
   const result = (await request(action, { token })) as ApiResult<PortalData>;
   if (!result.data) throw new Error('운영 데이터가 비어 있습니다.');
   return result.data;

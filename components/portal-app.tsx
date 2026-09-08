@@ -122,11 +122,7 @@ export function PortalApp() {
     onRefresh: () => refresh(),
     onLogout: logout,
   };
-  return user.role === 'ADMIN' ? (
-    <AdminPortal {...props} />
-  ) : (
-    <StudentPortal {...props} />
-  );
+  return user.role === 'STUDENT' ? <StudentPortal {...props} /> : <AdminPortal {...props} />;
 }
 
 function successMessage(action: string) {
@@ -155,6 +151,20 @@ function successMessage(action: string) {
     adminUpsertHandover: '인수인계를 저장했습니다.',
     adminDeleteHandover: '인수인계를 삭제 처리했습니다.',
     studentUpsertHandover: '인수인계를 저장했습니다.',
+    changeOwnPassword: '비밀번호를 변경했습니다. 다음 로그인부터 새 비밀번호를 사용하세요.',
+    adminUpsertAdmin: '관리자 계정을 저장했습니다.',
+    adminResetAdminPassword: '관리자 비밀번호를 초기화했습니다.',
+    adminDeactivateAdmin: '관리자 계정을 비활성화했습니다.',
+    adminUpsertAbsence: '결근 기록과 수정 이력을 저장했습니다.',
+    adminCancelAbsence: '결근 처리를 취소했습니다.',
+    adminUpsertNotice: '공지사항을 저장했습니다.',
+    adminDeleteNotice: '공지사항을 삭제 처리했습니다.',
+    adminUpsertAssembly: '소집을 저장했습니다.',
+    adminAssignAssembly: '소집 참여자를 배정했습니다.',
+    adminCancelAssemblyParticipant: '소집 참여를 취소했습니다.',
+    studentApplyAssembly: '소집에 신청했습니다.',
+    studentCancelAssembly: '소집 신청을 취소했습니다.',
+    adminConfirmAssemblyAttendance: '소집 참석을 확인하고 근무기록에 반영했습니다.',
   };
   return labels[action] || '저장했습니다.';
 }
