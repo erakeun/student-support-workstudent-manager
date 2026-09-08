@@ -195,7 +195,7 @@ test('V6 권한·비밀번호·색상·결근·공지·소집을 서버와 역�
   const student = read('components/student-portal.tsx');
   const operations = read('components/operations-features.tsx');
   for (const marker of [
-    'SUPER_ADMIN', 'MANAGER', 'normalizeAdminRole_', 'assertSuperAdminRemains_',
+    'SUPER_ADMIN', 'MANAGER', 'normalizeAdminRole_', 'assertSuperAdminRemains_', 'adminDeleteAdmin_',
     'changeOwnPassword_', 'displayColor', 'adminUpsertAbsence_', 'adminCancelAbsence_',
     'adminUpsertNotice_', 'adminDeleteNotice_', 'adminUpsertAssembly_',
     'studentApplyAssembly_', 'cancelAssemblyParticipant_', 'adminConfirmAssemblyAttendance_',
@@ -212,6 +212,7 @@ test('V6 권한·비밀번호·색상·결근·공지·소집을 서버와 역�
   assert.match(operations, /미출근/);
   assert.match(operations, /결근 처리/);
   assert.match(operations, /비밀번호 변경/);
+  assert.match(operations, /삭제 처리/);
 });
 
 test('GitHub Pages와 Sites 정적 배포 설정을 계속 사용한다', () => {

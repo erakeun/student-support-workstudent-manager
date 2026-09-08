@@ -18,7 +18,7 @@ const TABLES = {
   Settings: ['key', 'value'],
   Substitutions: ['substitutionId', 'scheduleId', 'date', 'requesterStudentId', 'substituteStudentId', 'partId', 'status', 'reason', 'createdAt', 'updatedAt', 'approvedBy'],
   MigrationLog: ['migrationId', 'appliedAt', 'version', 'description', 'beforeStudents', 'afterStudents', 'beforeSchedules', 'afterSchedules'],
-  Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy', 'role', 'note', 'lastLoginAt', 'updatedAt', 'updatedBy'],
+  Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy', 'role', 'note', 'lastLoginAt', 'updatedAt', 'updatedBy', 'deletedAt', 'deletedBy'],
   Budgets: ['month', 'totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget', 'note', 'updatedAt', 'updatedBy', 'nationalBudget', 'internalBudget'],
   Handovers: ['handoverId', 'date', 'partId', 'authorStudentId', 'title', 'content', 'status', 'priority', 'targetStudentId', 'createdAt', 'updatedAt', 'completedAt', 'visibility', 'active', 'deletedAt', 'deletedBy', 'pinned', 'acknowledgedBy'],
   Absences: ['absenceId', 'studentId', 'date', 'scheduleId', 'scheduledStart', 'scheduledEnd', 'type', 'reason', 'note', 'status', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'cancelledAt', 'cancelledBy'],
@@ -89,6 +89,7 @@ function route_(request) {
       adminUpsertAdmin: () => ({ ok: true, record: adminUpsertAdmin_(requireSuperAdmin_(request.token), request.record, request.initialPassword) }),
       adminResetAdminPassword: () => ({ ok: true, record: adminResetAdminPassword_(requireSuperAdmin_(request.token), request.adminId, request.newPassword) }),
       adminDeactivateAdmin: () => ({ ok: true, record: adminDeactivateAdmin_(requireSuperAdmin_(request.token), request.adminId) }),
+      adminDeleteAdmin: () => ({ ok: true, record: adminDeleteAdmin_(requireSuperAdmin_(request.token), request.adminId) }),
       changeOwnPassword: () => ({ ok: true, changed: changeOwnPassword_(requireSessionUser_(request.token), request.currentPassword, request.newPassword) }),
       adminUpsertAbsence: () => ({ ok: true, record: adminUpsertAbsence_(requireAdmin_(request.token), request.record) }),
       adminCancelAbsence: () => ({ ok: true, record: adminCancelAbsence_(requireAdmin_(request.token), request.absenceId) }),
@@ -297,7 +298,7 @@ function readAdminData_(user) {
   const workLogs = withWorkLogFlags_(readTable_('WorkLogs'), students, schedules);
   const data = baseData_({ students: students, schedules: schedules, workLogs: workLogs, substitutions: readTable_('Substitutions'), budgets: readTable_('Budgets'), handovers: readTable_('Handovers').filter(row => isActive_(row.active)), absences: readTable_('Absences'), notices: readTable_('Notices').filter(row => isActive_(row.active)), assemblies: readTable_('Assemblies'), assemblyParticipants: readTable_('AssemblyParticipants') });
   data.currentUser = user;
-  data.admins = user.role === 'SUPER_ADMIN' ? readTable_('Admins').map(sanitizeAdmin_) : [];
+  data.admins = user.role === 'SUPER_ADMIN' ? readTable_('Admins').filter(row => !row.deletedAt).map(sanitizeAdmin_) : [];
   return data;
 }
 
@@ -386,6 +387,15 @@ function adminDeactivateAdmin_(user, adminId) {
   if (String(record.adminId) === String(user.adminId)) throw new Error('현재 로그인한 본인 계정은 비활성화할 수 없습니다.');
   if (normalizeAdminRole_(record) === 'SUPER_ADMIN') assertSuperAdminRemains_(record.adminId);
   record.active = false; record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return sanitizeAdmin_(upsertRecord_('Admins', record));
+}
+
+function adminDeleteAdmin_(user, adminId) {
+  const record = findById_('Admins', 'adminId', adminId);
+  if (!record || record.deletedAt) throw new Error('삭제할 관리자 계정을 찾을 수 없습니다.');
+  if (String(record.adminId) === String(user.adminId)) throw new Error('현재 로그인한 본인 계정은 삭제할 수 없습니다.');
+  if (normalizeAdminRole_(record) === 'SUPER_ADMIN') assertSuperAdminRemains_(record.adminId);
+  record.active = false; record.deletedAt = new Date(); record.deletedBy = actorId_(user); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
   return sanitizeAdmin_(upsertRecord_('Admins', record));
 }
 

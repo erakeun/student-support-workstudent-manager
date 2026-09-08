@@ -45,6 +45,8 @@ export type AdminAccount = {
   createdBy?: string;
   updatedAt?: string;
   updatedBy?: string;
+  deletedAt?: string;
+  deletedBy?: string;
   hasPassword?: boolean;
 };
 

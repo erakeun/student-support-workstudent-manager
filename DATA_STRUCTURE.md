@@ -34,7 +34,7 @@
 - `Settings`: key, value
 - `Substitutions`: substitutionId, scheduleId, date, requesterStudentId, substituteStudentId, partId, status, reason, createdAt, updatedAt, approvedBy
 - `MigrationLog`: migrationId, appliedAt, version, description, beforeStudents, afterStudents, beforeSchedules, afterSchedules
-- `Admins`: adminId, name, loginId, passwordHash, passwordSalt, active, lastPasswordChangedAt, createdAt, createdBy, role, note, lastLoginAt, updatedAt, updatedBy
+- `Admins`: adminId, name, loginId, passwordHash, passwordSalt, active, lastPasswordChangedAt, createdAt, createdBy, role, note, lastLoginAt, updatedAt, updatedBy, deletedAt, deletedBy
 - `Budgets`: month, totalBudget, supportBudget, reserveBudget, shortTermBudget, note, updatedAt, updatedBy, nationalBudget, internalBudget. `supportBudget`·`reserveBudget`은 V4 호환용 보존 열이며 V5 계산에는 사용하지 않습니다.
 - `Handovers`: handoverId, date, partId, authorStudentId, title, content, status, priority, targetStudentId, createdAt, updatedAt, completedAt, visibility, active, deletedAt, deletedBy, pinned, acknowledgedBy
 - `Absences`: absenceId, studentId, date, scheduleId, scheduledStart, scheduledEnd, type, reason, note, status, createdAt, createdBy, updatedAt, updatedBy, cancelledAt, cancelledBy

@@ -155,6 +155,7 @@ function successMessage(action: string) {
     adminUpsertAdmin: '관리자 계정을 저장했습니다.',
     adminResetAdminPassword: '관리자 비밀번호를 초기화했습니다.',
     adminDeactivateAdmin: '관리자 계정을 비활성화했습니다.',
+    adminDeleteAdmin: '관리자 계정을 삭제 처리하고 감사 이력을 보존했습니다.',
     adminUpsertAbsence: '결근 기록과 수정 이력을 저장했습니다.',
     adminCancelAbsence: '결근 처리를 취소했습니다.',
     adminUpsertNotice: '공지사항을 저장했습니다.',
