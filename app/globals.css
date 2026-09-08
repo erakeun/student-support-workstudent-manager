@@ -1,0 +1,127 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-sans-ui);
+  --font-mono: var(--font-mono-ui);
+  --font-heading: var(--font-sans-ui);
+  --radius-sm: calc(var(--radius) * .65);
+  --radius-md: calc(var(--radius) * .82);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.35);
+}
+
+:root {
+  --background: #f4f6f8;
+  --foreground: #14212b;
+  --card: #ffffff;
+  --card-foreground: #14212b;
+  --popover: #ffffff;
+  --popover-foreground: #14212b;
+  --primary: #075b9b;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf2f7;
+  --secondary-foreground: #19384e;
+  --muted: #edf1f4;
+  --muted-foreground: #62717d;
+  --accent: #e7f2f9;
+  --accent-foreground: #075b9b;
+  --destructive: #b33c49;
+  --border: #dbe2e8;
+  --input: #ccd6de;
+  --ring: #5b9dc8;
+  --radius: .625rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1d2d39;
+  --sidebar-primary: #075b9b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e7f2f9;
+  --sidebar-accent-foreground: #075b9b;
+  --sidebar-border: #dbe2e8;
+  --sidebar-ring: #5b9dc8;
+  --font-sans-ui: 'Apple SD Gothic Neo', 'Noto Sans KR', 'Pretendard', Arial, sans-serif;
+  --font-mono-ui: 'SFMono-Regular', Consolas, monospace;
+}
+
+.dark {
+  --background: #101820;
+  --foreground: #eef5f8;
+  --card: #17232d;
+  --card-foreground: #eef5f8;
+  --popover: #17232d;
+  --popover-foreground: #eef5f8;
+  --primary: #55a6da;
+  --primary-foreground: #07131c;
+  --secondary: #24323d;
+  --secondary-foreground: #eef5f8;
+  --muted: #24323d;
+  --muted-foreground: #a9b8c2;
+  --accent: #16364b;
+  --accent-foreground: #8dccf0;
+  --destructive: #ef7882;
+  --border: #33434f;
+  --input: #435562;
+  --ring: #55a6da;
+  --sidebar: #121d25;
+  --sidebar-foreground: #e8f0f4;
+  --sidebar-primary: #55a6da;
+  --sidebar-primary-foreground: #07131c;
+  --sidebar-accent: #18354a;
+  --sidebar-accent-foreground: #8dccf0;
+  --sidebar-border: #33434f;
+  --sidebar-ring: #55a6da;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { @apply font-sans; }
+  body { @apply bg-background text-foreground; font-size: 16px; }
+  button, input, select, textarea { font: inherit; }
+}
+
+::selection { background: #c7e3f4; color: #0b3653; }
+
+.schedule-day {
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 33px, #e7ebef 33px, #e7ebef 34px);
+}
+
+.field-label {
+  display: grid;
+  gap: .4rem;
+  color: #526473;
+  font-size: .8125rem;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .status-card [data-slot='card-content'] { min-height: 118px; }
+}
