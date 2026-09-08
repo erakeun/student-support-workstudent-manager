@@ -157,7 +157,9 @@ export function StudentPortal({
                       <Button
                         disabled={busy}
                         variant="destructive"
-                        onClick={() => onAction('clockOut')}
+                        onClick={() => {
+                          void onAction('clockOut').catch(() => undefined);
+                        }}
                       >
                         <LogOut />
                         퇴근하기
@@ -165,7 +167,9 @@ export function StudentPortal({
                     ) : (
                       <Button
                         disabled={busy}
-                        onClick={() => onAction('clockIn')}
+                        onClick={() => {
+                          void onAction('clockIn').catch(() => undefined);
+                        }}
                       >
                         <LogIn />
                         출근하기
@@ -521,11 +525,11 @@ function SubstitutionView({
                   disabled={busy}
                   size="sm"
                   className="mt-3"
-                  onClick={() =>
-                    onAction('studentApplySubstitution', {
+                  onClick={() => {
+                    void onAction('studentApplySubstitution', {
                       substitutionId: item.substitutionId,
-                    })
-                  }
+                    }).catch(() => undefined);
+                  }}
                 >
                   대체 신청
                 </Button>

@@ -700,8 +700,8 @@ function Students({
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() =>
-                          onAction('adminUpsertStudent', {
+                        onClick={() => {
+                          void onAction('adminUpsertStudent', {
                             record: {
                               studentId: s.studentId,
                               active: false,
@@ -709,8 +709,8 @@ function Students({
                               partId: s.partId,
                               workerType: s.workerType,
                             },
-                          })
-                        }
+                          }).catch(() => undefined);
+                        }}
                       >
                         비활성화
                       </Button>
@@ -790,11 +790,11 @@ function Schedules({
                       size="sm"
                       variant="destructive"
                       className="ml-2"
-                      onClick={() =>
-                        onAction('adminDeactivateSchedule', {
+                      onClick={() => {
+                        void onAction('adminDeactivateSchedule', {
                           scheduleId: s.scheduleId,
-                        })
-                      }
+                        }).catch(() => undefined);
+                      }}
                     >
                       삭제
                     </Button>
@@ -1003,9 +1003,11 @@ function Tasks({
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() =>
-                      onAction('adminDeactivateTask', { taskId: t.taskId })
-                    }
+                    onClick={() => {
+                      void onAction('adminDeactivateTask', {
+                        taskId: t.taskId,
+                      }).catch(() => undefined);
+                    }}
                   >
                     비활성화
                   </Button>
@@ -1064,11 +1066,11 @@ function Semesters({
                 String(s.semesterId) && (
                 <Button
                   size="sm"
-                  onClick={() =>
-                    onAction('adminActivateSemester', {
+                  onClick={() => {
+                    void onAction('adminActivateSemester', {
                       semesterId: s.semesterId,
-                    })
-                  }
+                    }).catch(() => undefined);
+                  }}
                 >
                   활성화
                 </Button>
@@ -1169,24 +1171,24 @@ function Substitutions({
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        onClick={() =>
-                          onAction('adminReviewSubstitution', {
+                        onClick={() => {
+                          void onAction('adminReviewSubstitution', {
                             substitutionId: r.substitutionId,
                             status: 'APPROVED',
-                          })
-                        }
+                          }).catch(() => undefined);
+                        }}
                       >
                         승인
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() =>
-                          onAction('adminReviewSubstitution', {
+                        onClick={() => {
+                          void onAction('adminReviewSubstitution', {
                             substitutionId: r.substitutionId,
                             status: 'REJECTED',
-                          })
-                        }
+                          }).catch(() => undefined);
+                        }}
                       >
                         반려
                       </Button>
