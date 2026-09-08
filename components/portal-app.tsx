@@ -200,16 +200,38 @@ export function PortalApp() {
 
   useWebMcp(setView, setQuery, clock);
 
-  const toggleEntity = (entity: string, id: string, active: boolean) => { setData((current) => ({ ...current, [entity]: (current[entity as keyof PortalData] as Array<Record<string, unknown>>).map((item) => Object.values(item).includes(id) ? { ...item, active } : item) } as PortalData)); };
-  const deleteEntity = (entity: string, id: string) => { setData((current) => ({ ...current, [entity]: (current[entity as keyof PortalData] as Array<Record<string, unknown>>).filter((item) => !Object.values(item).includes(id)) } as PortalData)); setMessage('미리보기 데이터에서 삭제했습니다. 운영 연결 후에는 Google Sheet에도 반영됩니다.'); };
+  const entityMeta: Record<string, { table: string; idKey: string }> = {
+    students: { table: 'Students', idKey: 'studentId' }, parts: { table: 'Parts', idKey: 'partId' },
+    schedules: { table: 'Schedules', idKey: 'scheduleId' }, tasks: { table: 'Tasks', idKey: 'taskId' },
+    workLogs: { table: 'WorkLogs', idKey: 'logId' }, semesters: { table: 'Semesters', idKey: 'semesterId' },
+  };
+  const toggleEntity = (entity: string, id: string, active: boolean) => {
+    const meta = entityMeta[entity];
+    const collection = data[entity as keyof PortalData] as Array<Record<string, unknown>>;
+    const currentRecord = collection.find((item) => String(item[meta.idKey]) === id);
+    if (!currentRecord) return;
+    const record = { ...currentRecord, active };
+    setData((current) => ({ ...current, [entity]: (current[entity as keyof PortalData] as Array<Record<string, unknown>>).map((item) => String(item[meta.idKey]) === id ? record : item) } as PortalData));
+    if (connected) void postPortalAction('upsertEntity', { table: meta.table, record }).then(() => setMessage('활성 상태를 Google Sheet에 저장했습니다.')).catch((error: Error) => setMessage(error.message));
+  };
+  const deleteEntity = (entity: string, id: string) => {
+    const meta = entityMeta[entity];
+    setData((current) => ({ ...current, [entity]: (current[entity as keyof PortalData] as Array<Record<string, unknown>>).filter((item) => String(item[meta.idKey]) !== id) } as PortalData));
+    if (connected) void postPortalAction('deleteEntity', { table: meta.table, id }).then(() => setMessage('Google Sheet에서 삭제했습니다.')).catch((error: Error) => setMessage(error.message));
+    else setMessage('미리보기 데이터에서 삭제했습니다.');
+  };
   const saveManaged = (kind: Exclude<ManageKind, null>, form: FormData) => {
     const values = Object.fromEntries(form.entries()); const id = `${kind}-${Date.now()}`;
-    setData((current) => { if (kind === 'student') { const item: Student = { studentId:id,name:String(values.name),studentNumber:String(values.studentNumber),partId:String(values.partId),workerType:'NATIONAL_WORK',startDate:'',endDate:'',taskSummary:'',workMemo:'',contactMemo:'',specialNote:'',substituteTasks:'',active:true }; return {...current,students:[...current.students,item]}; }
-      if (kind === 'part') { const item: Part = { partId:id,partName:String(values.partName),displayOrder:current.parts.length+1,color:'#64748b',active:true }; return {...current,parts:[...current.parts,item]}; }
-      if (kind === 'schedule') { const item: Schedule = { scheduleId:id,studentId:String(values.studentId),dayOfWeek:Number(values.dayOfWeek),startTime:String(values.startTime),endTime:String(values.endTime),semesterId:current.settings.activeSemester||'2026-2',active:true }; return {...current,schedules:[...current.schedules,item]}; }
-      if (kind === 'task') { const student = current.students.find((item) => item.studentId===String(values.studentId)); const item: WorkTask = { taskId:id,taskName:String(values.taskName),description:'',partId:student?.partId||'',studentId:String(values.studentId),employeeId:'',keywords:String(values.keywords||''),active:true }; return {...current,tasks:[...current.tasks,item]}; }
-      return {...current,semesters:[...current.semesters,{semesterId:String(values.semesterId),semesterName:String(values.semesterName),startDate:String(values.startDate),endDate:String(values.endDate),active:false}]}; });
-    setManageKind(null); setMessage('새 항목을 미리보기 데이터에 추가했습니다.');
+    let entity = 'semesters'; let table = 'Semesters'; let record: Record<string, unknown>;
+    if (kind === 'student') { entity = 'students'; table = 'Students'; record = { studentId:id,name:String(values.name),studentNumber:String(values.studentNumber),partId:String(values.partId),workerType:'NATIONAL_WORK',startDate:'',endDate:'',taskSummary:'',workMemo:'',contactMemo:'',specialNote:'',substituteTasks:'',active:true } satisfies Student; }
+    else if (kind === 'part') { entity = 'parts'; table = 'Parts'; record = { partId:id,partName:String(values.partName),displayOrder:data.parts.length+1,color:'#64748b',active:true } satisfies Part; }
+    else if (kind === 'schedule') { entity = 'schedules'; table = 'Schedules'; record = { scheduleId:id,studentId:String(values.studentId),dayOfWeek:Number(values.dayOfWeek),startTime:String(values.startTime),endTime:String(values.endTime),semesterId:data.settings.activeSemester||'2026-2',active:true } satisfies Schedule; }
+    else if (kind === 'task') { const student = data.students.find((item) => item.studentId===String(values.studentId)); entity = 'tasks'; table = 'Tasks'; record = { taskId:id,taskName:String(values.taskName),description:'',partId:student?.partId||'',studentId:String(values.studentId),employeeId:'',keywords:String(values.keywords||''),active:true } satisfies WorkTask; }
+    else record = { semesterId:String(values.semesterId),semesterName:String(values.semesterName),startDate:String(values.startDate),endDate:String(values.endDate),active:false };
+    setData((current) => ({ ...current, [entity]: [...(current[entity as keyof PortalData] as Array<Record<string, unknown>>), record] } as PortalData));
+    if (connected) void postPortalAction('upsertEntity', { table, record }).then(() => setMessage('새 항목을 Google Sheet에 저장했습니다.')).catch((error: Error) => setMessage(error.message));
+    else setMessage('새 항목을 미리보기 데이터에 추가했습니다.');
+    setManageKind(null);
   };
 
   const dateLabel = new Intl.DateTimeFormat('ko-KR', { year:'numeric',month:'long',day:'numeric',weekday:'short',timeZone:'Asia/Seoul' }).format(now);

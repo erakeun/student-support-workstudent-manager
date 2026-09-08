@@ -26,3 +26,10 @@ test('GitHub Pages와 Sites 정적 배포 설정이 준비되어 있다', () => 
   assert.match(workflow, /BASE_PATH:\s*\/student-support-workstudent-manager/);
   assert.equal(hosting.static.directory, 'dist/client');
 });
+
+test('관리자 변경은 운영 연결 시 Apps Script 저장 API를 호출한다', () => {
+  const portal = read('components/portal-app.tsx');
+  assert.match(portal, /postPortalAction\('upsertEntity'/);
+  assert.match(portal, /postPortalAction\('deleteEntity'/);
+  assert.match(portal, /postPortalAction\(mode/);
+});
