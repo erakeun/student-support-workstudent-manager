@@ -31,7 +31,7 @@ function route_(request) {
   try {
     const actions = {
       health: () => ({ ok: true, service: 'student-support-workstudent-manager', time: new Date().toISOString() }),
-      bootstrap: () => ({ ok: true, data: readPortalData_() }),
+      bootstrap: () => { requireHanyangUser_(); return { ok: true, data: readPortalData_() }; },
       initializeDatabase: () => { requireAdmin_(); return { ok: true, message: initializeDatabase() }; },
       upsertEntity: () => { requireAdmin_(); return { ok: true, record: upsertEntity_(request.table, request.record) }; },
       deleteEntity: () => { requireAdmin_(); deleteEntity_(request.table, request.id); return { ok: true }; },
