@@ -10,7 +10,7 @@
     "build": "vinext build",
     "test": "node --test test/*.test.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app/page.tsx app/layout.tsx components/portal-app.tsx lib test",
+    "lint": "oxlint app/page.tsx app/layout.tsx components/portal-app.tsx components/portal-ui.tsx components/login-screen.tsx components/student-portal.tsx components/admin-portal.tsx lib test",
     "format": "oxfmt"
   },
   "dependencies": {

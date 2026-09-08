@@ -20,6 +20,10 @@ export type Student = {
   specialNote: string;
   substituteTasks: string;
   active: boolean;
+  loginId?: string;
+  role?: 'STUDENT' | 'ADMIN' | 'STAFF';
+  hasPassword?: boolean;
+  lastPasswordChangedAt?: string;
 };
 
 export type Schedule = {
@@ -30,6 +34,8 @@ export type Schedule = {
   endTime: string;
   semesterId: string;
   active: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
 };
 
 export type WorkTask = {
@@ -41,6 +47,8 @@ export type WorkTask = {
   employeeId: string;
   keywords: string;
   active: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
 };
 
 export type Employee = {
@@ -61,6 +69,14 @@ export type WorkLog = {
   minutes: number;
   status: string;
   note: string;
+  scheduleId?: string;
+  partId?: string;
+  reason?: string;
+  editedBy?: string;
+  editedAt?: string;
+  createdBy?: string;
+  createdAt?: string;
+  flagCode?: string;
 };
 
 export type Semester = {
@@ -69,6 +85,30 @@ export type Semester = {
   startDate: string;
   endDate: string;
   active: boolean;
+  createdAt?: string;
+  createdBy?: string;
+};
+
+export type Substitution = {
+  substitutionId: string;
+  scheduleId: string;
+  date: string;
+  requesterStudentId: string;
+  substituteStudentId: string;
+  partId: string;
+  status: 'OPEN' | 'APPLIED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedBy: string;
+};
+
+export type SessionUser = {
+  role: 'STUDENT' | 'ADMIN' | 'STAFF';
+  name: string;
+  email?: string;
+  studentId?: string;
+  partId?: string;
 };
 
 export type PortalData = {
@@ -80,4 +120,9 @@ export type PortalData = {
   workLogs: WorkLog[];
   semesters: Semester[];
   settings: Record<string, string>;
+  substitutions?: Substitution[];
+  substitutionCandidates?: Array<
+    Pick<Student, 'studentId' | 'name' | 'partId'>
+  >;
+  currentUser?: SessionUser;
 };

@@ -1,38 +1,36 @@
-# 처음 설치하기
+# 설치·배포 안내
 
-## 1. 운영용 Google Sheet 준비
+이 문서는 재설치가 필요할 때만 사용합니다. 현재 운영 중인 시트·스크립트·배포를 지우고 새로 만들지 마세요.
 
-1. `keun0810@hanyang.ac.kr` 계정으로 Google Drive를 엽니다.
-2. 제공된 운영용 스프레드시트를 내 드라이브에 보관합니다.
-3. `Students`, `Schedules` 등 시트 이름을 바꾸지 않습니다.
+## Google Sheet
 
-## 2. Apps Script 연결
+1. 운영 스프레드시트를 한양대 부서 계정에 보관합니다.
+2. 시트명과 1행 컬럼명은 변경하지 않습니다.
+3. Apps Script 프로젝트 속성 `SPREADSHEET_ID`에 운영 시트 ID를 설정합니다.
+4. 편집기에서 `initializeDatabase`를 한 번 실행합니다. 이 함수는 누락 시트/컬럼만 추가하고 전·후 학생·시간표 행 수를 검증합니다.
 
-1. 스프레드시트 상단에서 **확장 프로그램 → Apps Script**를 누릅니다.
-2. `backend/Code.gs`의 내용을 `Code.gs`에 넣습니다.
-3. 프로젝트 설정에서 시간대를 **Asia/Seoul**로 확인합니다.
-4. 편집기 상단 함수 목록에서 `initializeDatabase`를 선택하고 한 번 실행합니다.
-5. 권한 요청이 나오면 학교 계정으로 승인합니다.
+## Apps Script 배포
 
-## 3. 웹앱 두 개 배포
+같은 프로젝트에 웹앱 배포 두 개를 유지합니다.
 
-같은 Apps Script 프로젝트를 두 번 배포합니다. 두 배포 모두 실행 사용자는 **나**로 둡니다.
+1. 공개 API: 실행 사용자 `나`, 액세스 `모든 사용자`. 주소는 공개지만 유효한 앱 세션 없이 운영 데이터를 반환하지 않습니다.
+2. 관리자 인증: 실행 사용자 `나`, 액세스 `Hanyang University의 모든 사용자`.
+3. 주소가 바뀌면 `public/runtime-config.js`의 `API_URL`, `AUTH_URL`만 수정합니다.
 
-1. **인증 배포**: 액세스 권한을 **Hanyang University의 모든 사용자**로 설정합니다.
-2. 인증 배포의 `/exec` 주소를 `public/runtime-config.js`의 `AUTH_URL`에 넣습니다.
-3. **API 배포**: 액세스 권한을 **모든 사용자**로 설정합니다.
-4. API 배포의 `/exec` 주소를 `public/runtime-config.js`의 `API_URL`에 넣습니다.
-5. API 배포는 공개 주소여도 유효한 단기 토큰 없이는 데이터를 반환하지 않습니다. `requirePortalUser_`의 토큰 검사를 제거하지 않습니다.
+## 관리자 권한
 
-## 4. 사이트 확인
+`Settings` 시트의 `ADMIN_EMAILS`에 한양대 이메일을 쉼표로 구분해 넣습니다. 프론트엔드에 관리자 비밀번호를 작성하지 않습니다.
 
-1. GitHub 저장소의 **Actions**에서 Pages 배포가 끝났는지 확인합니다.
-2. 사이트를 열어 왼쪽 아래 **한양대 계정으로 연결**을 누르고, 돌아온 뒤 **운영 데이터 연결됨**이 표시되는지 확인합니다.
-3. 주간표와 학생 상세정보를 확인합니다.
-4. 테스트 학생으로 출근과 퇴근을 한 번 기록한 뒤 `WorkLogs` 시트에서 확인합니다.
+## 배포 후 확인
 
-## 문제가 생기면
+1. 인증 없이 사이트를 열었을 때 로그인 화면만 보이는지 확인합니다.
+2. 한양대 계정 인증 후 관리자 대시보드가 열리는지 확인합니다.
+3. 명확한 TEST 학생을 추가해 학생 로그인·출퇴근을 확인한 후 관련 TEST 행을 모두 제거합니다.
+4. `npm test`, `npm run lint`, `npm run build`를 통과한 커밋만 배포합니다.
 
-- 데이터가 안 보임: `runtime-config.js`의 `AUTH_URL`·`API_URL`과 두 배포의 접근 권한 확인
-- 권한 오류: 학교 계정 로그인 여부와 `Settings` 시트의 `ADMIN_EMAILS` 확인
-- 새 학기 자료가 안 보임: `Settings`의 `activeSemester`와 `Schedules.semesterId` 확인
+## 자주 겪는 문제
+
+- 학생 로그인 실패: 학생이 활성인지, `loginId`, `passwordHash`, `passwordSalt`가 있는지 확인합니다. 비밀번호는 UI에서 초기화합니다.
+- 관리자 로그인 실패: 한양대 계정과 `ADMIN_EMAILS`, 인증 배포의 조직 권한을 확인합니다.
+- 데이터 로딩 실패: 두 배포의 새 버전 적용 여부와 `SPREADSHEET_ID`를 확인합니다.
+- 새 학기 시간표가 안 보임: 학기를 활성화했는지와 `Schedules.semesterId`를 확인합니다.

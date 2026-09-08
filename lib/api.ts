@@ -1,9 +1,11 @@
-import type { PortalData } from './portal-types';
+import type { PortalData, SessionUser } from './portal-types';
 
 type ApiResult<T = unknown> = {
   ok: boolean;
   data?: T;
   error?: string;
+  token?: string;
+  user?: SessionUser;
   [key: string]: unknown;
 };
 
@@ -13,57 +15,120 @@ declare global {
   }
 }
 
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzTUixfpnPdm55NS6gUI717QCnqH39Yd3tXpCTCldQ7Db_KJATjntE37sCQpI2OTSiUPg/exec';
-const DEFAULT_AUTH_URL = 'https://script.google.com/a/macros/hanyang.ac.kr/s/AKfycbxZkSjIyEFWqoMwwP_q6cY4hz0_GhB0SVbAiwCWFVTQOcPk2RT2zZWSQIircaWD0XBx_Q/exec';
+const DEFAULT_API_URL =
+  'https://script.google.com/macros/s/AKfycbzTUixfpnPdm55NS6gUI717QCnqH39Yd3tXpCTCldQ7Db_KJATjntE37sCQpI2OTSiUPg/exec';
+const DEFAULT_AUTH_URL =
+  'https://script.google.com/a/macros/hanyang.ac.kr/s/AKfycbxZkSjIyEFWqoMwwP_q6cY4hz0_GhB0SVbAiwCWFVTQOcPk2RT2zZWSQIircaWD0XBx_Q/exec';
+const APP_SESSION_KEY = 'workPortalAppSession';
+const HANYANG_TOKEN_KEY = 'workPortalHanyangToken';
 
 export function getApiUrl() {
   if (typeof window === 'undefined') return '';
   return window.WORK_PORTAL_CONFIG?.API_URL?.trim() || DEFAULT_API_URL;
 }
 
-export function getPortalToken() {
+export function consumeHanyangToken() {
   if (typeof window === 'undefined') return '';
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const issuedToken = hash.get('portalToken');
   if (issuedToken) {
-    window.sessionStorage.setItem('workPortalToken', issuedToken);
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    window.sessionStorage.setItem(HANYANG_TOKEN_KEY, issuedToken);
+    window.history.replaceState(
+      null,
+      '',
+      window.location.pathname + window.location.search,
+    );
   }
-  return issuedToken || window.sessionStorage.getItem('workPortalToken') || '';
+  return issuedToken || window.sessionStorage.getItem(HANYANG_TOKEN_KEY) || '';
 }
 
 export function getAuthUrl() {
   if (typeof window === 'undefined') return '';
-  const authUrl = window.WORK_PORTAL_CONFIG?.AUTH_URL?.trim() || DEFAULT_AUTH_URL;
-  if (!authUrl) return '';
+  const authUrl =
+    window.WORK_PORTAL_CONFIG?.AUTH_URL?.trim() || DEFAULT_AUTH_URL;
   const returnUrl = window.location.origin + window.location.pathname;
-  return `${authUrl}?action=authorize&returnUrl=${encodeURIComponent(returnUrl)}`;
+  return authUrl
+    ? `${authUrl}?action=authorize&returnUrl=${encodeURIComponent(returnUrl)}`
+    : '';
 }
 
-async function requestPortal(action: string, payload: Record<string, unknown> = {}) {
+export function getAppSessionToken() {
+  if (typeof window === 'undefined') return '';
+  return window.sessionStorage.getItem(APP_SESSION_KEY) || '';
+}
+
+function storeAppSession(token: string) {
+  window.sessionStorage.setItem(APP_SESSION_KEY, token);
+}
+
+async function request(action: string, payload: Record<string, unknown> = {}) {
   const apiUrl = getApiUrl();
   if (!apiUrl) throw new Error('Apps Script URL이 설정되지 않았습니다.');
-  const token = getPortalToken();
-  if (!token) throw new Error('한양대학교 계정 연결이 필요합니다.');
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, token, ...payload }),
+    body: JSON.stringify({ action, ...payload }),
     redirect: 'follow',
   });
-  return response.json() as Promise<ApiResult>;
+  const result = (await response.json()) as ApiResult;
+  if (!result.ok)
+    throw new Error(result.error || '요청을 처리하지 못했습니다.');
+  return result;
 }
 
-export async function loadPortalData(): Promise<PortalData | null> {
-  if (!getApiUrl() || !getPortalToken()) return null;
-  const result = await requestPortal('bootstrap') as ApiResult<PortalData>;
-  if (!result.ok) throw new Error(result.error || '운영 데이터를 불러오지 못했습니다.');
+export async function loginStudent(loginId: string, password: string) {
+  const result = await request('studentLogin', { loginId, password });
+  if (!result.token || !result.user)
+    throw new Error('로그인 응답이 올바르지 않습니다.');
+  storeAppSession(result.token);
+  return result.user;
+}
+
+export async function loginAdmin() {
+  const hanyangToken = consumeHanyangToken();
+  if (!hanyangToken) throw new Error('먼저 한양대학교 계정 인증을 완료하세요.');
+  const result = await request('adminLogin', { hanyangToken });
+  if (!result.token || !result.user)
+    throw new Error('관리자 로그인 응답이 올바르지 않습니다.');
+  storeAppSession(result.token);
+  return result.user;
+}
+
+export async function restoreSession() {
+  const token = getAppSessionToken();
+  if (!token) return null;
+  try {
+    const result = await request('session', { token });
+    return result.user || null;
+  } catch {
+    window.sessionStorage.removeItem(APP_SESSION_KEY);
+    return null;
+  }
+}
+
+export async function loadRoleData(
+  role: SessionUser['role'],
+): Promise<PortalData> {
+  const token = getAppSessionToken();
+  if (!token) throw new Error('로그인이 필요합니다.');
+  const action = role === 'ADMIN' ? 'adminBootstrap' : 'studentBootstrap';
+  const result = (await request(action, { token })) as ApiResult<PortalData>;
   if (!result.data) throw new Error('운영 데이터가 비어 있습니다.');
   return result.data;
 }
 
-export async function postPortalAction(action: string, payload: Record<string, unknown>) {
-  const result = await requestPortal(action, payload);
-  if (!result.ok) throw new Error(result.error || '요청을 처리하지 못했습니다.');
-  return result;
+export async function postPortalAction(
+  action: string,
+  payload: Record<string, unknown> = {},
+) {
+  const token = getAppSessionToken();
+  if (!token) throw new Error('로그인이 필요합니다.');
+  return request(action, { token, ...payload });
+}
+
+export async function logoutPortal() {
+  const token = getAppSessionToken();
+  if (token) await request('logout', { token }).catch(() => undefined);
+  window.sessionStorage.removeItem(APP_SESSION_KEY);
+  window.sessionStorage.removeItem(HANYANG_TOKEN_KEY);
 }

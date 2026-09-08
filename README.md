@@ -1,32 +1,36 @@
 # 한양대학교 ERICA 학생지원팀 근로관리
 
-학생지원팀, 예비군·병무, 중국학생 근로를 한 화면에서 확인하는 내부 운영 포털입니다. 오늘 근무 현황, 주간 통합표, 담당업무 위키, 학생 상세정보, 출퇴근 기록과 관리자 기능을 제공합니다.
+학생지원·예비군/병무·중국학생 근로를 하나의 운영 DB에서 관리하는 권한 분리 포털입니다. 실제 데이터의 원본은 Google Spreadsheet이며, GitHub에는 학생 개인정보나 비밀번호가 저장되지 않습니다.
 
-## 운영 원칙
+## 권한별 기능
 
-- 실제 학번, 연락처, 개인 메모와 근무기록은 Google Sheet에만 저장합니다.
-- 이 저장소에는 예제 학생 A~H만 포함합니다.
-- 파트와 학기는 데이터로 관리하여 코드 수정 없이 추가할 수 있습니다.
-- `public/runtime-config.js` 한 곳에서 인증용·API용 Apps Script URL을 관리합니다.
-- 포털 데이터는 한양대 계정 인증 후 발급되는 6시간짜리 단기 토큰이 있어야 조회·수정할 수 있습니다.
+- 학생: ID/학번 로그인, 본인 시간표, 출·퇴근, 월/학기 누적시간, 본인 기록, 근로 위키, 동일 파트 대체근무.
+- 관리자: 세 파트 통합 대시보드, 학생/계정 CRUD, 시간표, 근무기록 추가·보정, 이상 기록, 담당업무, 학기, 파트, 대체근무, 설정.
+- 서버: 역할 검사, 비활성 로그인 차단, salted SHA-256 해시, 동일 `partId` 강제, `SHORT_TERM` 기간 검사, 학생별 응답 필터.
 
-## 구성
+## 운영 주소
 
-- `app`, `components`, `lib`: 반응형 포털 화면과 API 연결
-- `backend/Code.gs`: Google Apps Script API
-- `backend/appsscript.json`: Apps Script 설정 참고본
-- `.github/workflows/pages.yml`: GitHub Pages 개발 배포
-- `SETUP.md`: 처음 설치하는 방법
-- `HANDOVER.md`: 담당자 이관 방법
-- `DATA_STRUCTURE.md`: Google Sheet 표 구조
+- Sites Production: <https://hanyang-erica-workstudent-portal.hyungkeun.chatgpt.site>
+- GitHub Pages: <https://erakeun.github.io/student-support-workstudent-manager/>
+- Google Spreadsheet: <https://docs.google.com/spreadsheets/d/1MsTB8E186vC_m_B-Xbb2whPNU_ocPxis6UCTxuNfI2I/edit>
 
-## 확인 명령
+## 주요 파일
+
+- `backend/Code.gs`: Apps Script V2 API·인증·migration
+- `components/login-screen.tsx`: 최초 로그인
+- `components/student-portal.tsx`: 모바일 우선 학생 포털
+- `components/admin-portal.tsx`: PC 우선 관리자 포털
+- `DATA_STRUCTURE.md`: 시트 스키마와 보안 경계
+- `HANDOVER.md`: 행정 담당자 운영·이관 절차
+- `FEATURE_PARITY.md`: 두 레퍼런스와의 기능 비교
+
+## 검증
 
 ```bash
 npm ci
 npm test
-npm run build
 npm run lint
+npm run build
 ```
 
-운영 배포 URL은 `public/runtime-config.js`에 연결되어 있습니다. 왼쪽 아래 **한양대 계정으로 연결**을 누르면 내부 인증 배포가 단기 토큰을 발급하고, 토큰 검증용 API 배포가 Google Sheet 데이터를 제공합니다. 연결 전이나 인증 만료 뒤에는 개인정보 없는 미리보기 데이터가 유지됩니다.
+2026-09-08 V2 migration은 기존 학생 8명과 시간표 41구간을 그대로 보존했습니다. E2E에 사용한 `TEST-20260908-*` 학생·일정·기록·업무·학기·대체근무는 검증 후 모두 제거했습니다.
