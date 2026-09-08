@@ -37,7 +37,7 @@
 
 - 파트는 `student-support`, `reserve-affairs`, `chinese-support` 세 개를 유지한다.
 - 대체근무 후보·조회·저장은 서버에서 동일 `partId`로 제한한다.
-- 중국학생은 `SHORT_TERM`과 `startDate`/`endDate`를 사용하며 종료 후에도 계정과 기록을 자동 삭제하지 않는다.
+- 단기근로자는 `SHORT_TERM`과 `startDate`/`endDate`를 사용하며 종료 후에도 계정과 기록을 자동 삭제하지 않는다.
 - 정규 예정은 `Schedules`, 실제 출퇴근은 `WorkLogs`로 분리하고 누적시간은 완료된 `WorkLogs`로 계산한다.
 - 기존 학생 8명과 일정 41구간은 마이그레이션 전후 건수를 검증하며 수정하지 않는다.
 - 학생 API 응답에는 다른 학생의 학번·인증값·메모·근무기록을 포함하지 않는다.
@@ -52,24 +52,24 @@
 
 | 기능 | 최종 상태 | 학생지원팀 적용 |
 |---|---|---|
-| 최초 로그인·역할별 완전 분리 | Implemented | 학생 ID/학번+비밀번호, 관리자 한양대 조직 인증 |
+| 최초 로그인·역할별 완전 분리 | Implemented | 학생 학번 ID/PW, 관리자 일반 ID/PW, Google OAuth 미사용 |
 | 학생 홈·오늘·다음 근무 | Implemented | 본인 파트·상태·월/학기 누적 |
 | 출근·퇴근·중복 차단 | Implemented | 세션의 학생 ID로만 저장 |
-| 내 시간표·월별 기록 | Implemented | 활성 학기/본인 행만 서버 반환 |
+| 내 시간표·월별 기록 | Implemented | 활성 학기/본인 행만 서버 반환, 주·월간 보기 |
 | 근로 위키 | Implemented | 본인 파트/공통 업무, 관리자 메모 제외 |
 | 관리자 통합 대시보드 | Implemented | 세 파트 현재/다음, 미출근, 퇴근, 이상, SHORT_TERM, 업무 검색 |
-| 학생·계정 CRUD | Implemented | 추가·수정·비활성·해시 비밀번호 초기화 |
+| 학생·계정 CRUD | Implemented | 연락처·개별 시급, 학번 초기계정, 비활성·해시 비밀번호 초기화 |
 | 시간표 CRUD | Implemented | 현재 학기, 월∼금, 30분 단위, 비활성 삭제 |
 | 근무기록 관리 | Implemented | 학기·월·파트·학생·상태 필터, 직접 추가·보정·감사 |
 | 비정상 기록 | Implemented | 퇴근 누락·중복·역전·비활성·시간표 불일치·시간표 외 |
 | 학기 생성·전환 | Implemented | 과거 학생·WorkLogs 보존, 코드/재배포 불필요 |
 | 파트 관리·결계 | Implemented | 세 `partId` 유지, 서버 단 응답 필터 |
 | 대체근무 | Implemented | 동일 파트 요청→신청→관리자 승인; 교차 파트는 UI·API·승인에서 차단 |
-| 중국학생 기간 | Implemented | `SHORT_TERM`, start/end, 종료 표시·출근 차단·과거 보존 |
-| 모바일 학생 내비게이션 | Implemented | 고정 하단 5개 메뉴, 홈의 출퇴근 버튼 |
+| 단기근로 기간 | Implemented | `SHORT_TERM`, start/end, 종료 표시·로그인/출근 차단·과거 보존 |
+| 모바일 학생 내비게이션 | Implemented | 홈·출퇴근·내 시간표·내 근무기록·대체근무·담당업무·내 정보 |
 | 공지·인수인계 별도 모듈 | Intentionally different | Tasks 기반 근로 위키로 통합 |
 | 추가근무 모집 | Not applicable | 이번 필수 범위에서 제외; 대체근무는 구현 |
-| 예산·시급 계산 | Intentionally different | 확정된 단가/예산 규칙이 없어 임의 추가하지 않음 |
+| 예산·시급 계산 | Implemented | 개별→파트→근로유형 시급 우선순위, 실제 달력 예정·완료 WorkLogs 실적 |
 | 공휴일·특정일 예외 | Not applicable | 현재 30분 반복 시간표 범위; 후속 확장 후보 |
 
 `Missing`으로 남은 필수 항목은 없다. `Not applicable`과 `Intentionally different`는 학생지원팀의 운영 요구와 확정 데이터 범위에 따른 구분이다.
