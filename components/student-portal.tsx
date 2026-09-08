@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Repeat2,
   ScrollText,
+  UserRound,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,13 +45,22 @@ import {
   todaySchedules,
 } from './portal-ui';
 
-type StudentView = 'home' | 'schedule' | 'logs' | 'wiki' | 'substitutions';
+type StudentView =
+  | 'home'
+  | 'attendance'
+  | 'schedule'
+  | 'logs'
+  | 'substitutions'
+  | 'wiki'
+  | 'profile';
 const NAV: Array<{ id: StudentView; label: string; icon: typeof Home }> = [
   { id: 'home', label: '홈', icon: Home },
+  { id: 'attendance', label: '출퇴근', icon: Clock3 },
   { id: 'schedule', label: '내 시간표', icon: CalendarDays },
-  { id: 'logs', label: '내 기록', icon: ScrollText },
-  { id: 'wiki', label: '근로 위키', icon: BookOpenText },
+  { id: 'logs', label: '내 근무기록', icon: ScrollText },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
+  { id: 'wiki', label: '담당업무', icon: BookOpenText },
+  { id: 'profile', label: '내 정보', icon: UserRound },
 ];
 
 export function StudentPortal({
@@ -254,6 +264,13 @@ export function StudentPortal({
       </header>
       <main className="mx-auto max-w-6xl p-4 pb-24 sm:p-7 sm:pb-8">
         {view === 'home' && home}
+        {view === 'attendance' && (
+          <AttendanceView
+            data={data}
+            busy={busy}
+            onAction={onAction}
+          />
+        )}
         {view === 'schedule' && <ScheduleView data={data} />}{' '}
         {view === 'logs' && (
           <LogsView data={data} month={month} setMonth={setMonth} />
@@ -262,13 +279,16 @@ export function StudentPortal({
         {view === 'substitutions' && (
           <SubstitutionView data={data} busy={busy} onAction={onAction} />
         )}
+        {view === 'profile' && (
+          <ProfileView data={data} busy={busy} onAction={onAction} />
+        )}
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t bg-white px-1 py-1.5 sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t bg-white px-1 py-1.5 sm:hidden">
         {NAV.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setView(id)}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-bold ${view === id ? 'bg-sky-50 text-[#075b9b]' : 'text-slate-500'}`}
+            className={`flex min-h-14 min-w-[76px] flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-bold ${view === id ? 'bg-sky-50 text-[#075b9b]' : 'text-slate-500'}`}
           >
             <Icon className="size-5" />
             {label}
@@ -297,14 +317,36 @@ function Summary({ label, value }: { label: string; value: string }) {
 }
 
 function ScheduleView({ data }: { data: PortalData }) {
+  const [mode, setMode] = useState<'week' | 'month'>('week');
+  const [month, setMonth] = useState(monthKey());
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDate = new Date(year, monthNumber, 0).getDate();
+  const calendarRows = Array.from({ length: lastDate }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, '0')}`;
+    const day = new Date(`${date}T12:00:00+09:00`).getDay();
+    return {
+      date,
+      day,
+      schedules: data.schedules.filter(
+        (s) => Number(s.dayOfWeek) === day && s.active !== false,
+      ),
+    };
+  }).filter((row) => row.day >= 1 && row.day <= 5 && row.schedules.length);
   return (
     <>
       <PageTitle
         eyebrow="MY SCHEDULE"
         title="내 시간표"
-        description="현재 활성 학기의 본인 정규 근무입니다."
+        description="현재 활성 학기의 본인 정규 근무를 주간·월간으로 확인합니다."
+        action={
+          <div className="flex gap-2">
+            <Button variant={mode === 'week' ? 'default' : 'outline'} onClick={() => setMode('week')}>주간</Button>
+            <Button variant={mode === 'month' ? 'default' : 'outline'} onClick={() => setMode('month')}>월간</Button>
+          </div>
+        }
       />
-      <div className="grid gap-3 sm:grid-cols-5">
+      {mode === 'month' && <Input className="mb-4 w-44 bg-white" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />}
+      {mode === 'week' ? <div className="grid gap-3 sm:grid-cols-5">
         {[1, 2, 3, 4, 5].map((day) => (
           <Card key={day} className="shadow-none">
             <CardHeader className="pb-2">
@@ -330,9 +372,48 @@ function ScheduleView({ data }: { data: PortalData }) {
             </CardContent>
           </Card>
         ))}
-      </div>
+      </div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {calendarRows.map((row) => (
+          <Card key={row.date} className="shadow-none">
+            <CardHeader className="pb-2"><CardTitle className="text-base">{row.date} · {DAYS[row.day]}요일</CardTitle></CardHeader>
+            <CardContent className="space-y-2">{row.schedules.map((schedule) => <div key={schedule.scheduleId} className="rounded-lg border bg-slate-50 p-3 font-mono text-sm font-bold">{schedule.startTime}–{schedule.endTime}</div>)}</CardContent>
+          </Card>
+        ))}
+        {!calendarRows.length && <Empty>선택한 달의 근무 일정이 없습니다.</Empty>}
+      </div>}
     </>
   );
+}
+
+function AttendanceView({ data, busy, onAction }: { data: PortalData; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => Promise<void> }) {
+  const working = data.workLogs.find((log) => log.status === 'WORKING');
+  const today = todaySchedules(data, data.students[0]?.studentId);
+  return <>
+    <PageTitle eyebrow="CLOCK IN · OUT" title="출퇴근" description="모바일에서 바로 출근·퇴근을 기록합니다. 정규 시간표 밖 기록은 관리자 확인 대상으로 표시됩니다." />
+    <Card className="mx-auto max-w-xl shadow-none"><CardHeader><CardTitle>{working ? '현재 근무 중입니다' : '출근 준비가 완료되었습니다'}</CardTitle><CardDescription>{today.length ? today.map((schedule) => `${schedule.startTime}–${schedule.endTime}`).join(', ') : '오늘 정규 일정 없음'}</CardDescription></CardHeader><CardContent>
+      <Button className="h-16 w-full text-lg" variant={working ? 'destructive' : 'default'} disabled={busy} onClick={() => void onAction(working ? 'clockOut' : 'clockIn').catch(() => undefined)}>{working ? <LogOut /> : <LogIn />}{working ? '퇴근하기' : '출근하기'}</Button>
+    </CardContent></Card>
+  </>;
+}
+
+function ProfileView({ data, busy, onAction }: { data: PortalData; busy: boolean; onAction: (action: string, payload?: Record<string, unknown>) => Promise<void> }) {
+  const student = data.students[0];
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await onAction('studentUpdateContact', { email: form.get('email'), phone: form.get('phone') });
+  };
+  return <>
+    <PageTitle eyebrow="MY PROFILE" title="내 정보" description="이름·학번·파트는 관리자만 변경할 수 있습니다. 이메일과 전화번호는 직접 수정할 수 있습니다." />
+    <Card className="mx-auto max-w-2xl shadow-none"><CardContent className="p-6"><form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+      <label className="field-label">이름<Input value={student.name} disabled /></label>
+      <label className="field-label">학번<Input value={student.studentNumber || '확인 필요'} disabled /></label>
+      <label className="field-label sm:col-span-2">파트<Input value={partName(data, student.partId)} disabled /></label>
+      <label className="field-label">이메일<Input name="email" type="email" defaultValue={student.email || ''} /></label>
+      <label className="field-label">전화번호<Input name="phone" type="tel" defaultValue={student.phone || ''} /></label>
+      <Button className="sm:col-span-2" type="submit" disabled={busy}>연락처 저장</Button>
+    </form></CardContent></Card>
+  </>;
 }
 
 function LogsView({

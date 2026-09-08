@@ -4,6 +4,7 @@ export type Part = {
   displayOrder: number;
   color: string;
   active: boolean;
+  defaultHourlyWage?: number | string;
 };
 
 export type Student = {
@@ -24,6 +25,9 @@ export type Student = {
   role?: 'STUDENT' | 'ADMIN' | 'STAFF';
   hasPassword?: boolean;
   lastPasswordChangedAt?: string;
+  email?: string;
+  phone?: string;
+  hourlyWage?: number | string;
 };
 
 export type Schedule = {

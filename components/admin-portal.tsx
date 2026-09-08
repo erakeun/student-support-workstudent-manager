@@ -17,6 +17,7 @@ import {
   Settings2,
   ShieldCheck,
   UsersRound,
+  WalletCards,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,7 @@ type AdminView =
   | 'semesters'
   | 'parts'
   | 'substitutions'
+  | 'budget'
   | 'settings';
 type Editor = {
   kind:
@@ -103,6 +105,7 @@ const NAV: Array<{
   { id: 'logs', label: '근무기록 관리', icon: ClipboardCheck },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
   { id: 'tasks', label: '담당업무', icon: BookOpenText },
+  { id: 'budget', label: '예산', icon: WalletCards },
   { id: 'semesters', label: '학기 관리', icon: Database },
   { id: 'parts', label: '파트 관리', icon: ShieldCheck },
   { id: 'settings', label: '설정', icon: Settings2 },
@@ -142,6 +145,7 @@ export function AdminPortal({
     semesters: <Semesters data={data} edit={setEditor} onAction={onAction} />,
     parts: <Parts data={data} edit={setEditor} />,
     substitutions: <Substitutions data={data} onAction={onAction} />,
+    budget: <Budget data={data} />,
     settings: <Settings data={data} busy={busy} onAction={onAction} />,
   }[view];
   return (
@@ -176,7 +180,8 @@ export function AdminPortal({
           ))}
         </nav>
         <div className="border-t p-4">
-          <p className="truncate text-xs font-bold">{user.email}</p>
+          <p className="truncate text-xs font-bold">{user.name || user.loginId}</p>
+          <p className="truncate text-[11px] text-slate-400">{user.loginId}</p>
           <Button
             variant="outline"
             size="sm"
@@ -339,7 +344,7 @@ function Dashboard({
               onClick={() => setView('logs')}
             />
             <Quick
-              label="SHORT_TERM 종료"
+              label="단기근로 종료"
               value={expiring.length}
               onClick={() => setView('students')}
             />
@@ -521,37 +526,43 @@ function ShiftTable({ data, rows }: { data: PortalData; rows: Schedule[] }) {
 
 function Week({ data }: { data: PortalData }) {
   const [part, setPart] = useState('all');
+  const [student, setStudent] = useState('all');
+  const [mode, setMode] = useState<'week' | 'month'>('week');
+  const [month, setMonth] = useState(monthKey());
   const rows = data.schedules.filter(
     (s) =>
       s.active !== false &&
       data.students.some(
         (st) =>
           st.studentId === s.studentId &&
-          (part === 'all' || st.partId === part),
+          (part === 'all' || st.partId === part) &&
+          (student === 'all' || st.studentId === student),
       ),
   );
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDate = new Date(year, monthNumber, 0).getDate();
+  const monthly = Array.from({ length: lastDate }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, '0')}`;
+    const day = new Date(`${date}T12:00:00+09:00`).getDay();
+    return { date, day, rows: rows.filter((schedule) => Number(schedule.dayOfWeek) === day) };
+  }).filter((item) => item.day >= 1 && item.day <= 5 && item.rows.length);
   return (
     <>
       <PageTitle
         eyebrow="WEEKLY SCHEDULE"
-        title="주간 통합 시간표"
-        description="월~금, 30분 단위 정규 근무표입니다."
+        title="통합 시간표"
+        description="파트·학생을 필터링하고 주간 또는 실제 날짜가 적용된 월간 일정으로 봅니다."
         action={
-          <NativeSelect
-            value={part}
-            onChange={(e) => setPart(e.target.value)}
-            className="w-52 bg-white"
-          >
-            <NativeSelectOption value="all">전체 파트</NativeSelectOption>
-            {data.parts.map((p) => (
-              <NativeSelectOption key={p.partId} value={p.partId}>
-                {p.partName}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <div className="flex flex-wrap gap-2">
+            <Button variant={mode === 'week' ? 'default' : 'outline'} onClick={() => setMode('week')}>주간</Button>
+            <Button variant={mode === 'month' ? 'default' : 'outline'} onClick={() => setMode('month')}>월간</Button>
+            <NativeSelect value={part} onChange={(e) => setPart(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 파트</NativeSelectOption>{data.parts.map((p) => <NativeSelectOption key={p.partId} value={p.partId}>{p.partName}</NativeSelectOption>)}</NativeSelect>
+            <NativeSelect value={student} onChange={(e) => setStudent(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 학생</NativeSelectOption>{data.students.filter((item) => part === 'all' || item.partId === part).map((item) => <NativeSelectOption key={item.studentId} value={item.studentId}>{item.name}</NativeSelectOption>)}</NativeSelect>
+          </div>
         }
       />
-      <Card className="overflow-auto shadow-none">
+      {mode === 'month' && <Input className="mb-4 w-44 bg-white" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />}
+      {mode === 'week' ? <Card className="overflow-auto shadow-none">
         <CardContent className="min-w-[900px] p-0">
           <Table>
             <TableHeader>
@@ -600,7 +611,7 @@ function Week({ data }: { data: PortalData }) {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+      </Card> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{monthly.map((item) => <Card key={item.date} className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{item.date} · {DAYS[item.day]}요일</CardTitle></CardHeader><CardContent className="space-y-2">{item.rows.map((schedule) => <div key={schedule.scheduleId} className="rounded-lg border bg-slate-50 p-3 text-sm"><b>{schedule.startTime}–{schedule.endTime}</b><span className="ml-2">{studentName(data, schedule.studentId)}</span></div>)}</CardContent></Card>)}{!monthly.length && <Empty>조건에 맞는 월간 일정이 없습니다.</Empty>}</div>}
     </>
   );
 }
@@ -634,6 +645,8 @@ function Students({
               <TableHead>이름/ID</TableHead>
               <TableHead>학번</TableHead>
               <TableHead>파트</TableHead>
+              <TableHead>연락처</TableHead>
+              <TableHead>시급</TableHead>
               <TableHead>유형·기간</TableHead>
               <TableHead>계정</TableHead>
               <TableHead>상태</TableHead>
@@ -651,6 +664,13 @@ function Students({
                 </TableCell>
                 <TableCell>{s.studentNumber || '확인 필요'}</TableCell>
                 <TableCell>{partName(data, s.partId)}</TableCell>
+                <TableCell>
+                  <span className="block text-sm">{s.email || '확인 필요'}</span>
+                  <small className="text-slate-400">{s.phone || '확인 필요'}</small>
+                </TableCell>
+                <TableCell className={!Number(s.hourlyWage || 0) ? 'bg-amber-50 font-bold text-amber-700' : ''}>
+                  {Number(s.hourlyWage || 0) ? `${Number(s.hourlyWage).toLocaleString()}원` : '미입력'}
+                </TableCell>
                 <TableCell>
                   {s.workerType}
                   {shortTermState(s) && (
@@ -684,18 +704,7 @@ function Students({
                     >
                       수정
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        edit({
-                          kind: 'password',
-                          record: s as unknown as Record<string, unknown>,
-                        })
-                      }
-                    >
-                      비밀번호
-                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { void onAction('adminResetPasswordToStudentNumber', { studentId: s.studentId }).catch(() => undefined); }}>학번으로 초기화</Button>
                     {s.active && (
                       <Button
                         size="sm"
@@ -962,6 +971,12 @@ function Tasks({
   edit: (e: Editor) => void;
   onAction: (a: string, p?: Record<string, unknown>) => Promise<void>;
 }) {
+  const [query, setQuery] = useState('');
+  const normalized = query.trim().toLowerCase();
+  const rows = data.tasks.filter((task) => {
+    const assignee = studentName(data, task.studentId);
+    return !normalized || [task.taskName, task.description, task.keywords, partName(data, task.partId), assignee].some((value) => String(value || '').toLowerCase().includes(normalized));
+  });
   return (
     <>
       <PageTitle
@@ -975,8 +990,9 @@ function Tasks({
           </Button>
         }
       />
+      <Input className="mb-4 max-w-md bg-white" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="업무명·설명·키워드·파트·학생명 검색" />
       <div className="grid gap-3 md:grid-cols-2">
-        {data.tasks.map((t) => (
+        {rows.map((t) => (
           <Card key={t.taskId} className="shadow-none">
             <CardHeader>
               <CardTitle className="text-base">{t.taskName}</CardTitle>
@@ -1016,6 +1032,7 @@ function Tasks({
             </CardContent>
           </Card>
         ))}
+        {!rows.length && <Empty>검색 결과가 없습니다.</Empty>}
       </div>
     </>
   );
@@ -1094,7 +1111,7 @@ function Parts({
       <PageTitle
         eyebrow="PARTS"
         title="파트 관리"
-        description="학생지원·예비군/병무·중국학생의 운영 구분입니다."
+        description="학생지원·예비군/병무·단기근로의 운영 구분입니다."
       />
       <div className="grid gap-3 md:grid-cols-3">
         {data.parts.map((p) => (
@@ -1210,6 +1227,54 @@ function Substitutions({
     </>
   );
 }
+
+function Budget({ data }: { data: PortalData }) {
+  const [month, setMonth] = useState(monthKey());
+  const term = activeSemester(data);
+  const monthStart = `${month}-01`;
+  const [year, monthNumber] = month.split('-').map(Number);
+  const monthEnd = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
+  const wageFor = (student: PortalData['students'][number]) => {
+    const individual = Number(student.hourlyWage || 0);
+    if (individual > 0) return { wage: individual, source: '개별' };
+    const part = data.parts.find((item) => item.partId === student.partId);
+    const partWage = Number(part?.defaultHourlyWage || 0);
+    if (partWage > 0) return { wage: partWage, source: '파트 기본' };
+    const key = student.workerType === 'NATIONAL_WORK' ? 'nationalWorkDefaultHourlyWage' : student.workerType === 'SHORT_TERM' ? 'shortTermDefaultHourlyWage' : 'otherDefaultHourlyWage';
+    const typeWage = Number(data.settings[key] || 0);
+    return { wage: typeWage, source: typeWage > 0 ? '근로유형 기본' : '미입력' };
+  };
+  const countScheduledMinutes = (student: PortalData['students'][number]) => {
+    const start = [monthStart, term?.startDate || monthStart, student.startDate || monthStart].sort().at(-1) || monthStart;
+    const end = [monthEnd, term?.endDate || monthEnd, student.endDate || monthEnd].sort()[0] || monthEnd;
+    if (start > end) return 0;
+    let total = 0;
+    for (const cursor = new Date(`${start}T12:00:00+09:00`); cursor <= new Date(`${end}T12:00:00+09:00`); cursor.setDate(cursor.getDate() + 1)) {
+      const day = cursor.getDay();
+      data.schedules.filter((schedule) => schedule.active !== false && schedule.studentId === student.studentId && Number(schedule.dayOfWeek) === day && (!term || String(schedule.semesterId) === String(term.semesterId))).forEach((schedule) => { total += minutes(schedule.endTime) - minutes(schedule.startTime); });
+    }
+    return total;
+  };
+  const rows = data.students.filter((student) => student.active !== false).map((student) => {
+    const scheduledMinutes = countScheduledMinutes(student);
+    const actualMinutes = data.workLogs.filter((log) => log.studentId === student.studentId && log.status === 'COMPLETE' && log.date >= monthStart && log.date <= monthEnd).reduce((sum, log) => sum + Number(log.minutes || 0), 0);
+    const wage = wageFor(student);
+    return { student, scheduledMinutes, actualMinutes, wage: wage.wage, wageSource: wage.source, scheduledCost: Math.round(scheduledMinutes / 60 * wage.wage), actualCost: Math.round(actualMinutes / 60 * wage.wage) };
+  });
+  const total = rows.reduce((sum, row) => ({ scheduledMinutes: sum.scheduledMinutes + row.scheduledMinutes, actualMinutes: sum.actualMinutes + row.actualMinutes, scheduledCost: sum.scheduledCost + row.scheduledCost, actualCost: sum.actualCost + row.actualCost }), { scheduledMinutes: 0, actualMinutes: 0, scheduledCost: 0, actualCost: 0 });
+  return <>
+    <PageTitle eyebrow="BUDGET" title="월별 근로 예산" description="주차 수를 임의로 곱하지 않고 선택 월의 실제 달력 날짜·학기·근무기간을 교차해 예정 시간을 계산합니다." action={<Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44 bg-white" />} />
+    <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric label="예정 근로시간" value={hoursText(total.scheduledMinutes)} />
+      <Metric label="예정 인건비" value={`${total.scheduledCost.toLocaleString()}원`} />
+      <Metric label="실제 완료시간" value={hoursText(total.actualMinutes)} />
+      <Metric label="실제 인건비" value={`${total.actualCost.toLocaleString()}원`} />
+    </div>
+    <div className="mb-4 grid gap-3 md:grid-cols-3">{data.parts.map((part) => { const partRows = rows.filter((row) => row.student.partId === part.partId); const planned = partRows.reduce((sum, row) => sum + row.scheduledCost, 0); const actual = partRows.reduce((sum, row) => sum + row.actualCost, 0); return <Card key={part.partId} className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{partName(data, part.partId)}</CardTitle></CardHeader><CardContent className="text-sm"><p>예정 {planned.toLocaleString()}원</p><p className="mt-1 text-slate-500">실제 {actual.toLocaleString()}원</p></CardContent></Card>; })}</div>
+    <Card className="overflow-auto shadow-none"><Table><TableHeader><TableRow><TableHead>학생</TableHead><TableHead>파트</TableHead><TableHead>적용 시급</TableHead><TableHead>예정 시간/비용</TableHead><TableHead>실제 시간/비용</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.student.studentId} className={!row.wage ? 'bg-amber-50' : ''}><TableCell className="font-bold">{row.student.name}</TableCell><TableCell>{partName(data, row.student.partId)}</TableCell><TableCell>{row.wage ? `${row.wage.toLocaleString()}원 · ${row.wageSource}` : <Badge variant="destructive">시급 확인 필요</Badge>}</TableCell><TableCell>{hoursText(row.scheduledMinutes)} · {row.scheduledCost.toLocaleString()}원</TableCell><TableCell>{hoursText(row.actualMinutes)} · {row.actualCost.toLocaleString()}원</TableCell></TableRow>)}</TableBody></Table></Card>
+  </>;
+}
+
 function Settings({
   data,
   busy,
@@ -1223,7 +1288,13 @@ function Settings({
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     return onAction('adminSaveSettings', {
-      settings: { timezone: f.get('timezone'), wikiTitle: f.get('wikiTitle') },
+      settings: {
+        timezone: f.get('timezone'),
+        wikiTitle: f.get('wikiTitle'),
+        nationalWorkDefaultHourlyWage: f.get('nationalWorkDefaultHourlyWage'),
+        shortTermDefaultHourlyWage: f.get('shortTermDefaultHourlyWage'),
+        otherDefaultHourlyWage: f.get('otherDefaultHourlyWage'),
+      },
     });
   };
   return (
@@ -1250,6 +1321,11 @@ function Settings({
                 defaultValue={data.settings.wikiTitle || '담당업무·근로 위키'}
               />
             </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="field-label">국가근로 기본 시급<Input name="nationalWorkDefaultHourlyWage" type="number" min="0" step="10" defaultValue={data.settings.nationalWorkDefaultHourlyWage || ''} /></label>
+              <label className="field-label">단기근로 기본 시급<Input name="shortTermDefaultHourlyWage" type="number" min="0" step="10" defaultValue={data.settings.shortTermDefaultHourlyWage || ''} /></label>
+              <label className="field-label">기타 기본 시급<Input name="otherDefaultHourlyWage" type="number" min="0" step="10" defaultValue={data.settings.otherDefaultHourlyWage || ''} /></label>
+            </div>
             <Button type="submit" disabled={busy}>설정 저장</Button>
           </form>
         </CardContent>
@@ -1421,6 +1497,10 @@ function EditorDialog({
                   defaultValue={String(r.color || '#075b9b')}
                 />
               </label>
+              <label className="field-label">
+                파트 기본 시급
+                <Input name="defaultHourlyWage" type="number" min="0" step="10" defaultValue={String(r.defaultHourlyWage || '')} placeholder="선택 입력" />
+              </label>
             </>
           )}
           <div className="mt-3 flex justify-end gap-2 sm:col-span-2">
@@ -1452,14 +1532,6 @@ function StudentFields({
         <Input
           name="studentNumber"
           defaultValue={String(r.studentNumber || '')}
-        />
-      </label>
-      <label className="field-label">
-        로그인 ID
-        <Input
-          name="loginId"
-          defaultValue={String(r.loginId || r.studentNumber || '')}
-          required
         />
       </label>
       <label className="field-label">
@@ -1514,6 +1586,18 @@ function StudentFields({
           defaultValue={String(r.endDate || '')}
         />
       </label>
+      <label className="field-label">
+        이메일
+        <Input name="email" type="email" defaultValue={String(r.email || '')} />
+      </label>
+      <label className="field-label">
+        전화번호
+        <Input name="phone" type="tel" defaultValue={String(r.phone || '')} />
+      </label>
+      <label className="field-label sm:col-span-2">
+        개별 시급
+        <Input name="hourlyWage" type="number" min="0" step="10" defaultValue={String(r.hourlyWage || '')} placeholder="미입력 시 파트·근로유형 기본 시급 적용" />
+      </label>
       <label className="field-label sm:col-span-2">
         담당업무
         <Input name="taskSummary" defaultValue={String(r.taskSummary || '')} />
@@ -1522,18 +1606,7 @@ function StudentFields({
         관리자 메모
         <Input name="workMemo" defaultValue={String(r.workMemo || '')} />
       </label>
-      {!r.studentId && (
-        <label className="field-label sm:col-span-2">
-          초기 비밀번호
-          <Input
-            name="initialPassword"
-            type="password"
-            minLength={8}
-            required
-            autoComplete="new-password"
-          />
-        </label>
-      )}
+      {!r.studentId && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900 sm:col-span-2">초기 ID와 비밀번호는 모두 학번으로 자동 생성됩니다.</p>}
     </>
   );
 }

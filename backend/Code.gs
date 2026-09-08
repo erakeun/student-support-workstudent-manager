@@ -7,8 +7,8 @@ const TIMEZONE = 'Asia/Seoul';
 const SESSION_TTL_SECONDS = 21600;
 
 const TABLES = {
-  Parts: ['partId', 'partName', 'displayOrder', 'color', 'active'],
-  Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active', 'loginId', 'passwordHash', 'passwordSalt', 'role', 'lastPasswordChangedAt'],
+  Parts: ['partId', 'partName', 'displayOrder', 'color', 'active', 'defaultHourlyWage'],
+  Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active', 'loginId', 'passwordHash', 'passwordSalt', 'role', 'lastPasswordChangedAt', 'email', 'phone', 'hourlyWage'],
   Schedules: ['scheduleId', 'studentId', 'dayOfWeek', 'startTime', 'endTime', 'semesterId', 'active', 'updatedAt', 'updatedBy'],
   WorkLogs: ['logId', 'studentId', 'date', 'clockIn', 'clockOut', 'minutes', 'status', 'note', 'scheduleId', 'partId', 'reason', 'editedBy', 'editedAt', 'createdBy', 'createdAt', 'flagCode'],
   Tasks: ['taskId', 'taskName', 'description', 'partId', 'studentId', 'employeeId', 'keywords', 'active', 'updatedAt', 'updatedBy'],
@@ -21,7 +21,7 @@ const TABLES = {
 };
 
 const COLUMN_WIDTHS = {
-  Parts: [150, 120, 90, 90, 70], Students: [135, 90, 110, 130, 120, 100, 100, 180, 180, 180, 220, 180, 70, 120, 110, 110, 80, 160],
+  Parts: [150, 120, 90, 90, 70, 120], Students: [135, 90, 110, 130, 120, 100, 100, 180, 180, 180, 220, 180, 70, 120, 110, 110, 80, 160, 190, 130, 110],
   Schedules: [135, 125, 90, 90, 90, 100, 70, 160, 170], WorkLogs: [135, 125, 100, 165, 165, 85, 105, 180, 135, 125, 180, 170, 165, 170, 165, 180],
   Tasks: [135, 150, 220, 125, 125, 125, 180, 70, 160, 170], Employees: [135, 90, 125, 90, 220, 70],
   Semesters: [110, 150, 100, 100, 70, 160, 170], Settings: [230, 430], Substitutions: [145, 135, 100, 150, 150, 125, 100, 200, 165, 165, 170], MigrationLog: [140, 165, 90, 280, 100, 100, 110, 110],
@@ -54,6 +54,7 @@ function route_(request) {
       initializeDatabase: () => { const user = requireRole_(request.token, 'ADMIN'); return { ok: true, message: initializeDatabase(actorId_(user)) }; },
       adminUpsertStudent: () => ({ ok: true, record: adminUpsertStudent_(requireRole_(request.token, 'ADMIN'), request.record, request.initialPassword) }),
       adminResetPassword: () => ({ ok: true, record: adminResetPassword_(requireRole_(request.token, 'ADMIN'), request.studentId, request.newPassword) }),
+      adminResetPasswordToStudentNumber: () => ({ ok: true, record: adminResetPasswordToStudentNumber_(requireRole_(request.token, 'ADMIN'), request.studentId) }),
       adminUpsertSchedule: () => ({ ok: true, record: adminUpsertSchedule_(requireRole_(request.token, 'ADMIN'), request.record) }),
       adminDeactivateSchedule: () => ({ ok: true, record: setActive_('Schedules', 'scheduleId', request.scheduleId, false, requireRole_(request.token, 'ADMIN')) }),
       adminUpsertWorkLog: () => ({ ok: true, record: adminUpsertWorkLog_(requireRole_(request.token, 'ADMIN'), request.record) }),
@@ -68,6 +69,7 @@ function route_(request) {
       clockOut: () => ({ ok: true, record: clockOut_(requireRole_(request.token, 'STUDENT')) }),
       studentCreateSubstitution: () => ({ ok: true, record: studentCreateSubstitution_(requireRole_(request.token, 'STUDENT'), request.scheduleId, request.date, request.reason) }),
       studentApplySubstitution: () => ({ ok: true, record: studentApplySubstitution_(requireRole_(request.token, 'STUDENT'), request.substitutionId) }),
+      studentUpdateContact: () => ({ ok: true, record: studentUpdateContact_(requireRole_(request.token, 'STUDENT'), request.email, request.phone) }),
     };
     if (!actions[request.action]) throw new Error('지원하지 않는 요청입니다.');
     return actions[request.action]();
@@ -94,6 +96,7 @@ function studentLogin_(loginId, password) {
   const student = readTable_('Students').find(row => String(row.loginId || '').trim() === id || String(row.studentNumber || '').trim() === id);
   if (!student || !isActive_(student.active)) throw new Error('아이디 또는 비밀번호를 확인하세요.');
   if (!student.passwordHash || !student.passwordSalt || hashPassword_(pw, student.passwordSalt) !== String(student.passwordHash)) throw new Error('아이디 또는 비밀번호를 확인하세요.');
+  validateStudentPeriod_(student);
   const token = createSession_({ role: 'STUDENT', studentId: student.studentId, name: student.name, partId: student.partId });
   return { ok: true, token: token, user: { role: 'STUDENT', studentId: student.studentId, name: student.name, partId: student.partId } };
 }
@@ -102,7 +105,7 @@ function sessionInfo_(token) {
   const user = requireSession_(token);
   if (user.role === 'STUDENT') {
     const student = findById_('Students', 'studentId', user.studentId);
-    if (!student || !isActive_(student.active)) throw new Error('비활성화된 계정입니다.');
+    validateStudentPeriod_(student);
   } else if (user.role === 'ADMIN') {
     const admin = findById_('Admins', 'adminId', user.adminId);
     if (!admin || !isActive_(admin.active) || String(admin.loginId) !== String(user.loginId)) throw new Error('관리자 권한이 해제되었습니다.');
@@ -123,16 +126,21 @@ function initializeDatabase(actorEmail) {
   const beforeStudents = countRows_('Students');
   const beforeSchedules = countRows_('Schedules');
   Object.keys(TABLES).forEach(ensureTable_);
-  seedIfEmpty_('Parts', [['student-support', '학생지원', 1, '#0b72b9', true], ['reserve-affairs', '예비군·병무', 2, '#2f7f76', true], ['chinese-support', '중국학생', 3, '#d4872b', true]]);
+  seedIfEmpty_('Parts', [['student-support', '학생지원', 1, '#0b72b9', true, ''], ['reserve-affairs', '예비군·병무', 2, '#2f7f76', true, ''], ['chinese-support', '단기근로', 3, '#d4872b', true, '']]);
   seedIfEmpty_('Semesters', [['2026-2', '2026학년도 2학기', '', '', true, new Date(), actorEmail || 'migration']]);
   seedIfEmpty_('Settings', [['activeSemester', '2026-2'], ['timezone', TIMEZONE], ['ADMIN_EMAILS', 'keun0810@hanyang.ac.kr']]);
+  ensureSettingDefault_('nationalWorkDefaultHourlyWage', '');
+  ensureSettingDefault_('shortTermDefaultHourlyWage', '');
+  ensureSettingDefault_('otherDefaultHourlyWage', '');
   migrateStudentDefaults_();
   const afterStudents = countRows_('Students');
   const afterSchedules = countRows_('Schedules');
   if (beforeStudents !== afterStudents || beforeSchedules !== afterSchedules) throw new Error('마이그레이션 중 기존 행 수가 변경되어 중단했습니다.');
-  const version = 'V3-AUTH-2026-09-08';
-  if (!readTable_('MigrationLog').some(row => row.version === version)) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '일반 관리자 ID/PW 인증 테이블 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
-  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V3 인증 구조를 확인했습니다.';
+  const shortPart = findById_('Parts', 'partId', 'chinese-support');
+  if (shortPart && shortPart.partName !== '단기근로') upsertRecord_('Parts', { partId: shortPart.partId, partName: '단기근로' });
+  const version = 'V3-FULL-2026-09-08';
+  if (!readTable_('MigrationLog').some(row => row.version === version)) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '학생 연락처·개별시급·학번 초기계정·단기근로 표기 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
+  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V3 전체 구조를 확인했습니다.';
 }
 
 function createInitialAdminAccount(loginId, initialPassword, name) {
@@ -172,6 +180,7 @@ function migrateStudentDefaults_() {
     if (!student.loginId && student.studentNumber) { patch.loginId = String(student.studentNumber); changed = true; }
     if (!student.role) { patch.role = 'STUDENT'; changed = true; }
     if (student.active === '') { patch.active = true; changed = true; }
+    if (!student.passwordHash && !student.passwordSalt && student.studentNumber) { applyPassword_(patch, String(student.studentNumber)); changed = true; }
     if (changed) upsertRecord_('Students', patch);
   });
 }
@@ -186,7 +195,7 @@ function readAdminData_(user) {
 function readStudentData_(user) {
   const allStudents = readTable_('Students');
   const student = allStudents.find(row => String(row.studentId) === String(user.studentId));
-  if (!student || !isActive_(student.active)) throw new Error('활성 학생을 찾을 수 없습니다.');
+  validateStudentPeriod_(student);
   const semesterId = activeSemesterId_();
   const schedules = readTable_('Schedules').filter(row => String(row.studentId) === String(student.studentId) && String(row.semesterId) === semesterId && isActive_(row.active));
   const workLogs = withWorkLogFlags_(readTable_('WorkLogs').filter(row => String(row.studentId) === String(student.studentId)), [student], schedules);
@@ -199,22 +208,25 @@ function readStudentData_(user) {
 
 function baseData_(overrides) { return Object.assign({ parts: readTable_('Parts').filter(row => isActive_(row.active)), students: [], schedules: [], workLogs: [], tasks: readTable_('Tasks'), employees: readTable_('Employees'), semesters: readTable_('Semesters'), settings: settingsObject_(), substitutions: [], substitutionCandidates: [] }, overrides || {}); }
 function sanitizeStudentForAdmin_(student) { const copy = Object.assign({}, student); delete copy.passwordHash; delete copy.passwordSalt; copy.hasPassword = Boolean(student.passwordHash && student.passwordSalt); return copy; }
-function sanitizeStudentForSelf_(student) { return { studentId: student.studentId, name: student.name, partId: student.partId, workerType: student.workerType, startDate: student.startDate, endDate: student.endDate, taskSummary: student.taskSummary, substituteTasks: student.substituteTasks, active: student.active }; }
+function sanitizeStudentForSelf_(student) { return { studentId: student.studentId, name: student.name, studentNumber: student.studentNumber, partId: student.partId, workerType: student.workerType, startDate: student.startDate, endDate: student.endDate, taskSummary: student.taskSummary, substituteTasks: student.substituteTasks, active: student.active, email: student.email, phone: student.phone }; }
 
 function adminUpsertStudent_(user, input, initialPassword) {
   const record = Object.assign({}, input || {});
-  if (!record.name || !record.partId) throw new Error('이름과 파트를 입력하세요.');
+  if (!record.name || !record.studentNumber || !record.partId) throw new Error('이름, 학번, 파트를 입력하세요.');
   if (!['NATIONAL_WORK', 'SHORT_TERM', 'OTHER'].includes(String(record.workerType))) throw new Error('근로유형을 확인하세요.');
   if (record.workerType === 'SHORT_TERM' && (!record.startDate || !record.endDate)) throw new Error('단기근로자는 시작일과 종료일이 필요합니다.');
   if (record.startDate && record.endDate && record.startDate > record.endDate) throw new Error('근무 종료일은 시작일 이후여야 합니다.');
-  record.studentId = record.studentId || Utilities.getUuid(); record.role = 'STUDENT'; record.active = record.active !== false;
-  const duplicate = readTable_('Students').find(row => row.studentId !== record.studentId && record.loginId && String(row.loginId) === String(record.loginId));
-  if (duplicate) throw new Error('이미 사용 중인 로그인 ID입니다.');
+  record.studentId = record.studentId || Utilities.getUuid(); record.loginId = record.loginId || String(record.studentNumber); record.role = 'STUDENT'; record.active = record.active !== false;
+  const duplicate = readTable_('Students').find(row => row.studentId !== record.studentId && (String(row.loginId || '') === String(record.loginId || '') || String(row.studentNumber || '') === String(record.studentNumber || '')));
+  if (duplicate) throw new Error('이미 사용 중인 학번 또는 로그인 ID입니다.');
   if (initialPassword) applyPassword_(record, initialPassword);
+  else if (!record.passwordHash && !findById_('Students', 'studentId', record.studentId)) applyPassword_(record, String(record.studentNumber));
   return sanitizeStudentForAdmin_(upsertRecord_('Students', record));
 }
 
 function adminResetPassword_(user, studentId, newPassword) { validatePassword_(newPassword); const student = findById_('Students', 'studentId', studentId); if (!student) throw new Error('학생을 찾을 수 없습니다.'); applyPassword_(student, newPassword); return sanitizeStudentForAdmin_(upsertRecord_('Students', student)); }
+function adminResetPasswordToStudentNumber_(user, studentId) { const student = findById_('Students', 'studentId', studentId); if (!student || !student.studentNumber) throw new Error('학번을 확인하세요.'); applyPassword_(student, String(student.studentNumber)); return sanitizeStudentForAdmin_(upsertRecord_('Students', student)); }
+function studentUpdateContact_(user, email, phone) { const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student); student.email = String(email || '').trim(); student.phone = String(phone || '').trim(); return sanitizeStudentForSelf_(upsertRecord_('Students', student)); }
 
 function adminUpsertSchedule_(user, input) {
   const record = Object.assign({}, input || {}); const student = findById_('Students', 'studentId', record.studentId);
@@ -325,6 +337,7 @@ function countRows_(table) { const sheet = spreadsheet_().getSheetByName(table);
 function seedIfEmpty_(name, rows) { const sheet = spreadsheet_().getSheetByName(name); if (sheet.getLastRow() === 1 && rows.length) sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows); }
 function settingsObject_() { const settings = {}; readTable_('Settings').forEach(row => { settings[row.key] = String(row.value || ''); }); return settings; }
 function setSetting_(key, value) { return upsertRecord_('Settings', { key: key, value: value }); }
+function ensureSettingDefault_(key, value) { if (!readTable_('Settings').some(row => String(row.key) === String(key))) setSetting_(key, value); }
 function activeSemesterId_() { return settingsObject_().activeSemester || String((readTable_('Semesters').find(row => isActive_(row.active)) || {}).semesterId || ''); }
 function actorId_(user) { return String((user && (user.loginId || user.email || user.studentId)) || 'system'); }
 function today_() { return Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd'); }

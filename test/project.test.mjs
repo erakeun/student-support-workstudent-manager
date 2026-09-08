@@ -18,7 +18,7 @@ test('런타임 설정에는 공개 API URL만 있고 인증정보와 실제 학
   assert.doesNotMatch(demo, /stu-2026-/);
 });
 
-test('V2 Apps Script는 기존 8개 시트와 추가 관리 테이블을 비파괴적으로 보장한다', () => {
+test('V3 Apps Script는 기존 8개 시트와 추가 관리 테이블을 비파괴적으로 보장한다', () => {
   const source = backend();
   for (const table of [
     'Parts',
@@ -73,6 +73,14 @@ test('학생 비밀번호는 평문이 아닌 salt SHA-256 해시로 저장한�
     source,
     /record\.passwordHash = hashPassword_\(password, salt\)/,
   );
+  assert.match(source, /applyPassword_\(patch, String\(student\.studentNumber\)\)/);
+  assert.match(source, /adminResetPasswordToStudentNumber_/);
+});
+
+test('학생 연락처·개별시급과 파트·근로유형 기본 시급 구조를 제공한다', () => {
+  const source = backend();
+  for (const marker of ['email', 'phone', 'hourlyWage', 'defaultHourlyWage', 'nationalWorkDefaultHourlyWage', 'shortTermDefaultHourlyWage', 'studentUpdateContact_']) assert.match(source, new RegExp(marker));
+  assert.match(source, /delete copy\.passwordHash/);
 });
 
 test('대체근무는 신청과 승인 두 단계에서 같은 파트만 허용한다', () => {
@@ -125,6 +133,12 @@ test('로그인 후 학생·관리자 전용 포털과 운영 CRUD가 연결된�
   assert.match(controller, /AdminPortal/);
   assert.match(student, /clockIn/);
   assert.match(student, /studentCreateSubstitution/);
+  assert.match(student, /studentUpdateContact/);
+  assert.match(student, /출퇴근/);
+  assert.match(student, /내 정보/);
+  assert.match(admin, /월별 근로 예산/);
+  assert.match(admin, /actualCost/);
+  assert.match(admin, /countScheduledMinutes/);
   for (const action of [
     'adminUpsertStudent',
     'adminResetPassword',
@@ -133,6 +147,7 @@ test('로그인 후 학생·관리자 전용 포털과 운영 CRUD가 연결된�
     'adminUpsertTask',
     'adminCreateSemester',
     'adminUpsertPart',
+    'adminResetPasswordToStudentNumber',
   ]) {
     assert.match(admin, new RegExp(action));
   }

@@ -17,7 +17,7 @@ export const DEMO_DATA: PortalData = {
   parts: [
     { partId: 'student-support', partName: '학생지원', displayOrder: 1, color: '#0b72b9', active: true },
     { partId: 'reserve-affairs', partName: '예비군·병무', displayOrder: 2, color: '#2f7f76', active: true },
-    { partId: 'chinese-support', partName: '중국학생', displayOrder: 3, color: '#d4872b', active: true },
+    { partId: 'chinese-support', partName: '단기근로', displayOrder: 3, color: '#d4872b', active: true },
   ],
   students: [
     { studentId: 'student-a', name: '학생 A', studentNumber: '2026000001', partId: 'student-support', workerType: 'NATIONAL_WORK', startDate: '2026-09-01', endDate: '2027-02-28', taskSummary: '장학 민원 및 서류 정리', workMemo: '공용 문서함 확인', contactMemo: '', specialNote: '', substituteTasks: '민원 서류 전달', active: true },

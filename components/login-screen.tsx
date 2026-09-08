@@ -64,7 +64,7 @@ export function LoginScreen({
               기록까지 한곳에서
             </h1>
             <p className="mt-5 max-w-md text-[15px] leading-7 text-sky-100">
-              학생지원·예비군·병무·중국학생 근로를 한 시스템에서 안전하게
+              학생지원·예비군·병무·단기근로를 한 시스템에서 안전하게
               운영합니다.
             </p>
           </div>
@@ -79,7 +79,7 @@ export function LoginScreen({
             </span>
             <span className="flex items-center gap-2">
               <BookOpenText className="size-4" />
-              근로 위키
+              담당업무
             </span>
           </div>
         </section>
@@ -111,12 +111,12 @@ export function LoginScreen({
             {mode === 'student' ? (
               <form onSubmit={submit} className="mt-6 space-y-4">
                 <label className="field-label">
-                  ID 또는 학번
+                  학번
                   <Input
                     name="loginId"
                     autoComplete="username"
                     required
-                    placeholder="관리자가 안내한 로그인 ID"
+                    placeholder="학번 입력"
                     className="h-12"
                   />
                 </label>
@@ -130,7 +130,8 @@ export function LoginScreen({
                     className="h-12"
                   />
                 </label>
-            <Button type="submit" disabled={busy} className="h-12 w-full text-base">
+                <p className="text-xs text-slate-400">최초 ID와 비밀번호는 모두 학번입니다.</p>
+                <Button type="submit" disabled={busy} className="h-12 w-full text-base">
                   {busy ? '확인 중…' : '학생 로그인'} <ArrowRight />
                 </Button>
               </form>
