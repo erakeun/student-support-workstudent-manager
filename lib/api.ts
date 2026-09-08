@@ -11,46 +11,18 @@ type ApiResult<T = unknown> = {
 
 declare global {
   interface Window {
-    WORK_PORTAL_CONFIG?: { API_URL?: string; AUTH_URL?: string };
+    WORK_PORTAL_CONFIG?: { API_URL?: string };
   }
 }
 
 const DEFAULT_API_URL =
   'https://script.google.com/macros/s/AKfycbzTUixfpnPdm55NS6gUI717QCnqH39Yd3tXpCTCldQ7Db_KJATjntE37sCQpI2OTSiUPg/exec';
-const DEFAULT_AUTH_URL =
-  'https://script.google.com/a/macros/hanyang.ac.kr/s/AKfycbxZkSjIyEFWqoMwwP_q6cY4hz0_GhB0SVbAiwCWFVTQOcPk2RT2zZWSQIircaWD0XBx_Q/exec';
 const APP_SESSION_KEY = 'workPortalAppSession';
-const HANYANG_TOKEN_KEY = 'workPortalHanyangToken';
 const REQUEST_TIMEOUT_MS = 20_000;
 
 export function getApiUrl() {
   if (typeof window === 'undefined') return '';
   return window.WORK_PORTAL_CONFIG?.API_URL?.trim() || DEFAULT_API_URL;
-}
-
-export function consumeHanyangToken() {
-  if (typeof window === 'undefined') return '';
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const issuedToken = hash.get('portalToken');
-  if (issuedToken) {
-    window.sessionStorage.setItem(HANYANG_TOKEN_KEY, issuedToken);
-    window.history.replaceState(
-      null,
-      '',
-      window.location.pathname + window.location.search,
-    );
-  }
-  return issuedToken || window.sessionStorage.getItem(HANYANG_TOKEN_KEY) || '';
-}
-
-export function getAuthUrl() {
-  if (typeof window === 'undefined') return '';
-  const authUrl =
-    window.WORK_PORTAL_CONFIG?.AUTH_URL?.trim() || DEFAULT_AUTH_URL;
-  const returnUrl = window.location.origin + window.location.pathname;
-  return authUrl
-    ? `${authUrl}?action=authorize&returnUrl=${encodeURIComponent(returnUrl)}`
-    : '';
 }
 
 export function getAppSessionToken() {
@@ -99,10 +71,8 @@ export async function loginStudent(loginId: string, password: string) {
   return result.user;
 }
 
-export async function loginAdmin() {
-  const hanyangToken = consumeHanyangToken();
-  if (!hanyangToken) throw new Error('먼저 한양대학교 계정 인증을 완료하세요.');
-  const result = await request('adminLogin', { hanyangToken });
+export async function loginAdmin(loginId: string, password: string) {
+  const result = await request('adminLogin', { loginId, password });
   if (!result.token || !result.user)
     throw new Error('관리자 로그인 응답이 올바르지 않습니다.');
   storeAppSession(result.token);
@@ -145,5 +115,4 @@ export async function logoutPortal() {
   const token = getAppSessionToken();
   if (token) await request('logout', { token }).catch(() => undefined);
   window.sessionStorage.removeItem(APP_SESSION_KEY);
-  window.sessionStorage.removeItem(HANYANG_TOKEN_KEY);
 }

@@ -107,6 +107,8 @@ export type SessionUser = {
   role: 'STUDENT' | 'ADMIN' | 'STAFF';
   name: string;
   email?: string;
+  adminId?: string;
+  loginId?: string;
   studentId?: string;
   partId?: string;
 };

@@ -10,29 +10,32 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
 export function LoginScreen({
-  authUrl,
-  hanyangReady,
   busy,
   error,
   onStudent,
   onAdmin,
 }: {
-  authUrl: string;
-  hanyangReady: boolean;
   busy: boolean;
   error: string;
   onStudent: (loginId: string, password: string) => Promise<void>;
-  onAdmin: () => Promise<void>;
+  onAdmin: (loginId: string, password: string) => Promise<void>;
 }) {
   const [mode, setMode] = useState<'student' | 'admin'>('student');
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await onStudent(
+      String(form.get('loginId') || ''),
+      String(form.get('password') || ''),
+    );
+  };
+  const submitAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await onAdmin(
       String(form.get('loginId') || ''),
       String(form.get('password') || ''),
     );
@@ -132,31 +135,33 @@ export function LoginScreen({
                 </Button>
               </form>
             ) : (
-              <Card className="mt-6 border-[#cfe2ef] bg-[#f5fafd] shadow-none">
-                <CardContent className="p-5">
-                  <ShieldCheck className="size-8 text-[#075b9b]" />
-                  <h3 className="mt-3 font-black">한양대학교 관리자 인증</h3>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    한양대 계정 로그인 후 관리자 명단을 서버에서 확인합니다.
-                  </p>
-                  {hanyangReady ? (
-                    <Button
-                      disabled={busy}
-                      onClick={onAdmin}
-                      className="mt-5 h-11 w-full"
-                    >
-                      관리자 화면 열기 <ArrowRight />
-                    </Button>
-                  ) : (
-                    <a
-                      href={authUrl}
-                      className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90"
-                    >
-                      한양대 계정으로 인증 <ArrowRight className="size-4" />
-                    </a>
-                  )}
-                </CardContent>
-              </Card>
+              <form onSubmit={submitAdmin} className="mt-6 space-y-4">
+                <div className="flex items-center gap-2 text-sm font-black text-[#075b9b]">
+                  <ShieldCheck className="size-5" /> 관리자 로그인
+                </div>
+                <label className="field-label">
+                  관리자 ID
+                  <Input
+                    name="loginId"
+                    autoComplete="username"
+                    required
+                    className="h-12"
+                  />
+                </label>
+                <label className="field-label">
+                  비밀번호
+                  <Input
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    className="h-12"
+                  />
+                </label>
+                <Button type="submit" disabled={busy} className="h-12 w-full text-base">
+                  {busy ? '확인 중…' : '관리자 로그인'} <ArrowRight />
+                </Button>
+              </form>
             )}
             {error && (
               <div
@@ -167,8 +172,7 @@ export function LoginScreen({
               </div>
             )}
             <p className="mt-6 text-xs leading-5 text-slate-400">
-              계정 발급과 비밀번호 초기화는 학생지원팀 관리자에게 요청하세요.
-              인증정보는 GitHub에 저장되지 않습니다.
+              계정이나 비밀번호 관련 문의는 학생지원팀으로 연락하세요.
             </p>
           </div>
         </section>

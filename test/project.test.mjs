@@ -6,17 +6,14 @@ const read = (path) =>
   fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const backend = () => read('backend/Code.gs');
 
-test('런타임 설정에는 API·인증 배포 URL만 있고 실제 학생 개인정보는 없다', () => {
+test('런타임 설정에는 공개 API URL만 있고 인증정보와 실제 학생 개인정보는 없다', () => {
   const config = read('public/runtime-config.js');
   const demo = read('lib/demo-data.ts');
   assert.match(
     config,
     /API_URL:\s*'https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec'/,
   );
-  assert.match(
-    config,
-    /AUTH_URL:\s*'https:\/\/script\.google\.com\/a\/macros\/hanyang\.ac\.kr\/s\/[A-Za-z0-9_-]+\/exec'/,
-  );
+  assert.doesNotMatch(config, /AUTH_URL|hanyangToken|passwordHash/);
   assert.match(demo, /학생 A/);
   assert.doesNotMatch(demo, /stu-2026-/);
 });
@@ -34,6 +31,7 @@ test('V2 Apps Script는 기존 8개 시트와 추가 관리 테이블을 비파�
     'Settings',
     'Substitutions',
     'MigrationLog',
+    'Admins',
   ]) {
     assert.match(source, new RegExp(`${table}:`));
   }
@@ -50,7 +48,7 @@ test('V2 Apps Script는 기존 8개 시트와 추가 관리 테이블을 비파�
 
 test('관리자와 학생은 서버 세션·역할·필터로 분리된다', () => {
   const source = backend();
-  assert.match(source, /ALLOWED_DOMAIN = 'hanyang\.ac\.kr'/);
+  assert.doesNotMatch(source, /authorizePortal_|requireHanyangUser_|requirePortalUser_/);
   assert.ok(source.includes("requireRole_(request.token, 'ADMIN')"));
   assert.ok(source.includes("requireRole_(request.token, 'STUDENT')"));
   assert.match(source, /studentLogin_/);
@@ -104,13 +102,12 @@ test('출퇴근·보정·이상 탐지와 SHORT_TERM 기간 제한을 서버가 
   }
 });
 
-test('프론트엔드는 단기 Hanyang 토큰을 앱 세션으로 교환하고 역할별 데이터를 요청한다', () => {
+test('프론트엔드는 관리자·학생 ID/PW를 앱 세션으로 교환하고 역할별 데이터를 요청한다', () => {
   const api = read('lib/api.ts');
-  assert.match(api, /hash\.get\('portalToken'\)/);
-  assert.match(api, /workPortalHanyangToken/);
   assert.match(api, /workPortalAppSession/);
   assert.match(api, /adminLogin/);
   assert.match(api, /studentLogin/);
+  assert.doesNotMatch(api, /Hanyang|hanyangToken|AUTH_URL/);
   assert.match(api, /REQUEST_TIMEOUT_MS = 20_000/);
   assert.match(api, /controller\.abort\(\)/);
   assert.match(

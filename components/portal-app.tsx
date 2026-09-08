@@ -5,8 +5,6 @@ import { AdminPortal } from '@/components/admin-portal';
 import { LoginScreen } from '@/components/login-screen';
 import { StudentPortal } from '@/components/student-portal';
 import {
-  consumeHanyangToken,
-  getAuthUrl,
   loadRoleData,
   loginAdmin,
   loginStudent,
@@ -22,7 +20,6 @@ export function PortalApp() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [hanyangReady, setHanyangReady] = useState(false);
   const refresh = useCallback(
     async (role?: SessionUser['role']) => {
       const target = role || user?.role;
@@ -35,8 +32,6 @@ export function PortalApp() {
     let active = true;
     void (async () => {
       try {
-        const hanyang = consumeHanyangToken();
-        if (active) setHanyangReady(Boolean(hanyang));
         const session = await restoreSession();
         if (session && active) {
           setUser(session);
@@ -70,11 +65,11 @@ export function PortalApp() {
       setBusy(false);
     }
   };
-  const adminSignIn = async () => {
+  const adminSignIn = async (loginId: string, password: string) => {
     setBusy(true);
     setError('');
     try {
-      await enter(await loginAdmin());
+      await enter(await loginAdmin(loginId, password));
     } catch (e) {
       setError(
         e instanceof Error ? e.message : '관리자 로그인에 실패했습니다.',
@@ -107,14 +102,11 @@ export function PortalApp() {
     await logoutPortal();
     setUser(null);
     setData(null);
-    setHanyangReady(false);
     setBusy(false);
   };
   if (!user || !data)
     return (
       <LoginScreen
-        authUrl={getAuthUrl()}
-        hanyangReady={hanyangReady}
         busy={busy}
         error={error}
         onStudent={studentSignIn}

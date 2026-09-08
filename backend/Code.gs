@@ -1,16 +1,10 @@
 /**
- * 한양대학교 ERICA 학생지원팀 근로관리 API V2
+ * 한양대학교 ERICA 학생지원팀 근로관리 API V3
  * 운영 데이터와 인증 해시의 원본은 Google Spreadsheet다.
  * 기존 행은 삭제하지 않고 initializeDatabase()가 누락 열/시트만 추가한다.
  */
 const TIMEZONE = 'Asia/Seoul';
-const ALLOWED_DOMAIN = 'hanyang.ac.kr';
 const SESSION_TTL_SECONDS = 21600;
-const ALLOWED_PORTAL_URLS = [
-  'https://erakeun.github.io/student-support-workstudent-manager/',
-  'https://hanyang-erica-workstudent-portal.hyungkeun.chatgpt.site/',
-  'http://localhost:3000/',
-];
 
 const TABLES = {
   Parts: ['partId', 'partName', 'displayOrder', 'color', 'active'],
@@ -23,6 +17,7 @@ const TABLES = {
   Settings: ['key', 'value'],
   Substitutions: ['substitutionId', 'scheduleId', 'date', 'requesterStudentId', 'substituteStudentId', 'partId', 'status', 'reason', 'createdAt', 'updatedAt', 'approvedBy'],
   MigrationLog: ['migrationId', 'appliedAt', 'version', 'description', 'beforeStudents', 'afterStudents', 'beforeSchedules', 'afterSchedules'],
+  Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy'],
 };
 
 const COLUMN_WIDTHS = {
@@ -30,12 +25,12 @@ const COLUMN_WIDTHS = {
   Schedules: [135, 125, 90, 90, 90, 100, 70, 160, 170], WorkLogs: [135, 125, 100, 165, 165, 85, 105, 180, 135, 125, 180, 170, 165, 170, 165, 180],
   Tasks: [135, 150, 220, 125, 125, 125, 180, 70, 160, 170], Employees: [135, 90, 125, 90, 220, 70],
   Semesters: [110, 150, 100, 100, 70, 160, 170], Settings: [230, 430], Substitutions: [145, 135, 100, 150, 150, 125, 100, 200, 165, 165, 170], MigrationLog: [140, 165, 90, 280, 100, 100, 110, 110],
+  Admins: [140, 120, 150, 120, 120, 80, 170, 170, 150],
 };
 
 function doGet(e) {
   const request = Object.assign({}, (e && e.parameter) || {});
   request.action = request.action || 'health';
-  if (request.action === 'authorize') return authorizePortal_(request.returnUrl);
   return json_(route_(request));
 }
 
@@ -49,14 +44,14 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v2', time: new Date().toISOString() }),
-      adminLogin: () => adminLogin_(request.hanyangToken),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v3', time: new Date().toISOString() }),
+      adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
       logout: () => { endSession_(request.token); return { ok: true }; },
       adminBootstrap: () => ({ ok: true, data: readAdminData_(requireRole_(request.token, 'ADMIN')) }),
       studentBootstrap: () => ({ ok: true, data: readStudentData_(requireRole_(request.token, 'STUDENT')) }),
-      initializeDatabase: () => { const user = requireRole_(request.token, 'ADMIN'); return { ok: true, message: initializeDatabase(user.email) }; },
+      initializeDatabase: () => { const user = requireRole_(request.token, 'ADMIN'); return { ok: true, message: initializeDatabase(actorId_(user)) }; },
       adminUpsertStudent: () => ({ ok: true, record: adminUpsertStudent_(requireRole_(request.token, 'ADMIN'), request.record, request.initialPassword) }),
       adminResetPassword: () => ({ ok: true, record: adminResetPassword_(requireRole_(request.token, 'ADMIN'), request.studentId, request.newPassword) }),
       adminUpsertSchedule: () => ({ ok: true, record: adminUpsertSchedule_(requireRole_(request.token, 'ADMIN'), request.record) }),
@@ -81,27 +76,15 @@ function route_(request) {
   }
 }
 
-function authorizePortal_(returnUrl) {
-  const email = requireHanyangUser_();
-  const target = String(returnUrl || '');
-  const targetPath = target.split('#')[0].split('?')[0];
-  if (!ALLOWED_PORTAL_URLS.includes(targetPath)) return HtmlService.createHtmlOutput('허용되지 않은 포털 주소입니다.');
-  const token = randomToken_();
-  CacheService.getScriptCache().put('portal-session:' + token, email, SESSION_TTL_SECONDS);
-  const redirectUrl = target.split('#')[0] + '#portalToken=' + encodeURIComponent(token);
-  return HtmlService.createHtmlOutput(
-    '<!doctype html><meta charset="utf-8"><title>한양대 계정 연결</title><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<main style="font-family:Arial,sans-serif;max-width:520px;margin:64px auto;padding:28px;border:1px solid #d9e1e8;border-radius:12px">' +
-    '<h1 style="font-size:22px">한양대학교 계정 인증 완료</h1><p>관리자 권한 확인이 끝났습니다.</p>' +
-    '<a target="_top" href="' + escapeHtml_(redirectUrl) + '" style="display:inline-block;margin-top:12px;padding:11px 18px;border-radius:8px;background:#075b9b;color:white;text-decoration:none;font-weight:bold">포털로 돌아가기</a></main>'
-  ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function adminLogin_(hanyangToken) {
-  const email = requirePortalUser_(hanyangToken);
-  if (!adminEmails_().includes(email)) throw new Error('관리자 권한이 필요합니다.');
-  const token = createSession_({ role: 'ADMIN', email: email, name: '학생지원팀 관리자' });
-  return { ok: true, token: token, user: { role: 'ADMIN', email: email, name: '학생지원팀 관리자' } };
+function adminLogin_(loginId, password) {
+  const id = String(loginId || '').trim();
+  const pw = String(password || '');
+  if (!id || !pw) throw new Error('관리자 ID와 비밀번호를 입력하세요.');
+  const admin = readTable_('Admins').find(row => String(row.loginId || '').trim() === id);
+  if (!admin || !isActive_(admin.active) || !admin.passwordHash || !admin.passwordSalt || hashPassword_(pw, admin.passwordSalt) !== String(admin.passwordHash)) throw new Error('관리자 ID 또는 비밀번호를 확인하세요.');
+  const user = { role: 'ADMIN', adminId: admin.adminId, loginId: admin.loginId, name: admin.name || admin.loginId };
+  const token = createSession_(user);
+  return { ok: true, token: token, user: user };
 }
 
 function studentLogin_(loginId, password) {
@@ -120,7 +103,10 @@ function sessionInfo_(token) {
   if (user.role === 'STUDENT') {
     const student = findById_('Students', 'studentId', user.studentId);
     if (!student || !isActive_(student.active)) throw new Error('비활성화된 계정입니다.');
-  } else if (user.role === 'ADMIN' && !adminEmails_().includes(String(user.email || '').toLowerCase())) throw new Error('관리자 권한이 해제되었습니다.');
+  } else if (user.role === 'ADMIN') {
+    const admin = findById_('Admins', 'adminId', user.adminId);
+    if (!admin || !isActive_(admin.active) || String(admin.loginId) !== String(user.loginId)) throw new Error('관리자 권한이 해제되었습니다.');
+  }
   return { ok: true, user: user };
 }
 
@@ -144,9 +130,23 @@ function initializeDatabase(actorEmail) {
   const afterStudents = countRows_('Students');
   const afterSchedules = countRows_('Schedules');
   if (beforeStudents !== afterStudents || beforeSchedules !== afterSchedules) throw new Error('마이그레이션 중 기존 행 수가 변경되어 중단했습니다.');
-  const version = 'V2-2026-09-08';
-  if (!readTable_('MigrationLog').some(row => row.version === version)) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '인증·근태감사·대체근무 열/시트 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
-  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V2 구조를 확인했습니다.';
+  const version = 'V3-AUTH-2026-09-08';
+  if (!readTable_('MigrationLog').some(row => row.version === version)) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '일반 관리자 ID/PW 인증 테이블 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
+  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V3 인증 구조를 확인했습니다.';
+}
+
+function createInitialAdminAccount(loginId, initialPassword, name) {
+  initializeDatabase('admin-bootstrap');
+  const id = String(loginId || '').trim();
+  if (!id) throw new Error('관리자 ID가 필요합니다.');
+  validatePassword_(initialPassword);
+  const existing = readTable_('Admins').find(row => String(row.loginId || '').trim() === id);
+  const record = existing || { adminId: Utilities.getUuid(), loginId: id, createdAt: new Date(), createdBy: 'admin-bootstrap' };
+  record.name = String(name || '학생지원팀 관리자');
+  record.active = true;
+  applyPassword_(record, initialPassword);
+  upsertRecord_('Admins', record);
+  return { adminId: record.adminId, loginId: record.loginId, name: record.name, active: record.active };
 }
 
 function ensureTable_(name) {
@@ -163,7 +163,7 @@ function ensureTable_(name) {
   sheet.getRange(1, 1, 1, width).setBackground('#e9eef3').setFontColor('#1f2937').setFontWeight('bold').setWrap(true);
   sheet.getDataRange().setVerticalAlignment('middle').setWrap(true);
   (COLUMN_WIDTHS[name] || []).forEach((columnWidth, index) => { if (index < width) sheet.setColumnWidth(index + 1, columnWidth); });
-  if (sheet.getLastRow() > 1 && ['Students', 'Schedules', 'WorkLogs', 'Tasks', 'Employees', 'Substitutions'].includes(name) && !sheet.getFilter()) sheet.getRange(1, 1, sheet.getLastRow(), width).createFilter();
+  if (sheet.getLastRow() > 1 && ['Students', 'Schedules', 'WorkLogs', 'Tasks', 'Employees', 'Substitutions', 'Admins'].includes(name) && !sheet.getFilter()) sheet.getRange(1, 1, sheet.getLastRow(), width).createFilter();
 }
 
 function migrateStudentDefaults_() {
@@ -222,7 +222,7 @@ function adminUpsertSchedule_(user, input) {
   if (![1, 2, 3, 4, 5].includes(Number(record.dayOfWeek))) throw new Error('요일을 확인하세요.');
   validateHalfHour_(record.startTime); validateHalfHour_(record.endTime);
   if (timeMinutes_(record.startTime) >= timeMinutes_(record.endTime)) throw new Error('종료시간은 시작시간보다 늦어야 합니다.');
-  record.scheduleId = record.scheduleId || Utilities.getUuid(); record.semesterId = record.semesterId || activeSemesterId_(); record.active = record.active !== false; record.updatedAt = new Date(); record.updatedBy = user.email;
+  record.scheduleId = record.scheduleId || Utilities.getUuid(); record.semesterId = record.semesterId || activeSemesterId_(); record.active = record.active !== false; record.updatedAt = new Date(); record.updatedBy = actorId_(user);
   return upsertRecord_('Schedules', record);
 }
 
@@ -233,13 +233,13 @@ function adminUpsertWorkLog_(user, input) {
   const start = parseDateTime_(record.date, record.clockIn); const end = record.clockOut ? parseDateTime_(record.date, record.clockOut) : null;
   if (end && end.getTime() < start.getTime()) throw new Error('퇴근시각은 출근시각보다 늦어야 합니다.');
   const existing = record.logId && findById_('WorkLogs', 'logId', record.logId);
-  record.logId = record.logId || Utilities.getUuid(); record.clockIn = start; record.clockOut = end || ''; record.minutes = end ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)) : 0; record.status = end ? 'COMPLETE' : 'WORKING'; record.partId = student.partId; record.editedBy = user.email; record.editedAt = new Date(); record.createdBy = existing ? existing.createdBy : user.email; record.createdAt = existing ? existing.createdAt : new Date(); record.flagCode = computeLogFlag_(record, student, readTable_('Schedules'), readTable_('WorkLogs').filter(row => row.logId !== record.logId));
+  record.logId = record.logId || Utilities.getUuid(); record.clockIn = start; record.clockOut = end || ''; record.minutes = end ? Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)) : 0; record.status = end ? 'COMPLETE' : 'WORKING'; record.partId = student.partId; record.editedBy = actorId_(user); record.editedAt = new Date(); record.createdBy = existing ? existing.createdBy : actorId_(user); record.createdAt = existing ? existing.createdAt : new Date(); record.flagCode = computeLogFlag_(record, student, readTable_('Schedules'), readTable_('WorkLogs').filter(row => row.logId !== record.logId));
   return upsertRecord_('WorkLogs', record);
 }
 
-function adminUpsertTask_(user, input) { const record = Object.assign({}, input || {}); if (!record.taskName) throw new Error('업무명을 입력하세요.'); record.taskId = record.taskId || Utilities.getUuid(); record.active = record.active !== false; record.updatedAt = new Date(); record.updatedBy = user.email; return upsertRecord_('Tasks', record); }
+function adminUpsertTask_(user, input) { const record = Object.assign({}, input || {}); if (!record.taskName) throw new Error('업무명을 입력하세요.'); record.taskId = record.taskId || Utilities.getUuid(); record.active = record.active !== false; record.updatedAt = new Date(); record.updatedBy = actorId_(user); return upsertRecord_('Tasks', record); }
 function adminUpsertPart_(user, input) { const record = Object.assign({}, input || {}); if (!record.partId || !record.partName) throw new Error('파트 ID와 이름을 입력하세요.'); record.active = record.active !== false; return upsertRecord_('Parts', record); }
-function adminCreateSemester_(user, input) { const record = Object.assign({}, input || {}); if (!record.semesterId || !record.semesterName || !record.startDate || !record.endDate) throw new Error('학기 정보를 모두 입력하세요.'); if (record.startDate > record.endDate) throw new Error('학기 종료일을 확인하세요.'); if (findById_('Semesters', 'semesterId', record.semesterId)) throw new Error('이미 존재하는 학기입니다.'); record.active = false; record.createdAt = new Date(); record.createdBy = user.email; return upsertRecord_('Semesters', record); }
+function adminCreateSemester_(user, input) { const record = Object.assign({}, input || {}); if (!record.semesterId || !record.semesterName || !record.startDate || !record.endDate) throw new Error('학기 정보를 모두 입력하세요.'); if (record.startDate > record.endDate) throw new Error('학기 종료일을 확인하세요.'); if (findById_('Semesters', 'semesterId', record.semesterId)) throw new Error('이미 존재하는 학기입니다.'); record.active = false; record.createdAt = new Date(); record.createdBy = actorId_(user); return upsertRecord_('Semesters', record); }
 function adminActivateSemester_(user, semesterId) { if (!findById_('Semesters', 'semesterId', semesterId)) throw new Error('학기를 찾을 수 없습니다.'); readTable_('Semesters').forEach(row => upsertRecord_('Semesters', { semesterId: row.semesterId, active: row.semesterId === semesterId })); setSetting_('activeSemester', semesterId); return semesterId; }
 function adminSaveSettings_(user, values) { Object.keys(values || {}).forEach(key => { if (key !== 'ADMIN_EMAILS') setSetting_(key, values[key]); }); return settingsObject_(); }
 
@@ -278,7 +278,7 @@ function adminReviewSubstitution_(user, substitutionId, status) {
   const request = findById_('Substitutions', 'substitutionId', substitutionId);
   if (!request || !['APPROVED', 'REJECTED'].includes(String(status))) throw new Error('대체근무 처리값을 확인하세요.');
   if (status === 'APPROVED') { const requester = findById_('Students', 'studentId', request.requesterStudentId); const substitute = findById_('Students', 'studentId', request.substituteStudentId); if (!requester || !substitute || requester.partId !== substitute.partId || requester.partId !== request.partId) throw new Error('같은 파트 학생끼리만 대체근무를 승인할 수 있습니다.'); }
-  request.status = status; request.updatedAt = new Date(); request.approvedBy = user.email; return upsertRecord_('Substitutions', request);
+  request.status = status; request.updatedAt = new Date(); request.approvedBy = actorId_(user); return upsertRecord_('Substitutions', request);
 }
 
 function withWorkLogFlags_(logs, students, schedules) { return logs.map(log => { const copy = Object.assign({}, log); const student = students.find(row => row.studentId === log.studentId); copy.flagCode = computeLogFlag_(copy, student, schedules, logs.filter(row => row.logId !== log.logId)); return copy; }); }
@@ -293,7 +293,7 @@ function computeLogFlag_(log, student, schedules, peers) {
   return flags.join(',');
 }
 
-function setActive_(table, idKey, id, active, user) { const record = findById_(table, idKey, id); if (!record) throw new Error('대상을 찾을 수 없습니다.'); record.active = active; if ('updatedAt' in record) record.updatedAt = new Date(); if ('updatedBy' in record) record.updatedBy = user.email; return upsertRecord_(table, record); }
+function setActive_(table, idKey, id, active, user) { const record = findById_(table, idKey, id); if (!record) throw new Error('대상을 찾을 수 없습니다.'); record.active = active; if ('updatedAt' in record) record.updatedAt = new Date(); if ('updatedBy' in record) record.updatedBy = actorId_(user); return upsertRecord_(table, record); }
 function applyPassword_(record, password) { validatePassword_(password); const salt = Utilities.getUuid().replace(/-/g, ''); record.passwordSalt = salt; record.passwordHash = hashPassword_(password, salt); record.lastPasswordChangedAt = new Date(); }
 function validatePassword_(password) { if (String(password || '').length < 8) throw new Error('비밀번호는 8자 이상이어야 합니다.'); }
 function hashPassword_(password, salt) { const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(salt) + ':' + String(password), Utilities.Charset.UTF_8); return bytes.map(byte => ('0' + ((byte + 256) % 256).toString(16)).slice(-2)).join(''); }
@@ -326,7 +326,7 @@ function seedIfEmpty_(name, rows) { const sheet = spreadsheet_().getSheetByName(
 function settingsObject_() { const settings = {}; readTable_('Settings').forEach(row => { settings[row.key] = String(row.value || ''); }); return settings; }
 function setSetting_(key, value) { return upsertRecord_('Settings', { key: key, value: value }); }
 function activeSemesterId_() { return settingsObject_().activeSemester || String((readTable_('Semesters').find(row => isActive_(row.active)) || {}).semesterId || ''); }
-function adminEmails_() { return String(settingsObject_().ADMIN_EMAILS || '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean); }
+function actorId_(user) { return String((user && (user.loginId || user.email || user.studentId)) || 'system'); }
 function today_() { return Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd'); }
 function todaySchedules_(studentId, date) { const day = new Date(date + 'T12:00:00+09:00').getDay(); return readTable_('Schedules').filter(row => row.studentId === studentId && Number(row.dayOfWeek) === day && String(row.semesterId) === activeSemesterId_() && isActive_(row.active)); }
 function nearestScheduleId_(schedules) { if (!schedules.length) return ''; const now = Number(Utilities.formatDate(new Date(), TIMEZONE, 'H')) * 60 + Number(Utilities.formatDate(new Date(), TIMEZONE, 'm')); return schedules.slice().sort((a, b) => Math.abs(timeMinutes_(a.startTime) - now) - Math.abs(timeMinutes_(b.startTime) - now))[0].scheduleId; }
@@ -337,6 +337,3 @@ function parseDateTime_(date, time) { const value = new Date(String(date) + 'T' 
 function isActive_(value) { return !(value === false || String(value).toUpperCase() === 'FALSE' || String(value).toUpperCase() === 'N' || String(value) === '0'); }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
 function spreadsheet_() { const configuredId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'); if (configuredId) return SpreadsheetApp.openById(configuredId); const active = SpreadsheetApp.getActiveSpreadsheet(); if (!active) throw new Error('SPREADSHEET_ID를 설정하거나 Spreadsheet에 스크립트를 연결하세요.'); return active; }
-function requireHanyangUser_() { const email = String(Session.getActiveUser().getEmail() || '').toLowerCase(); if (!email || !email.endsWith('@' + ALLOWED_DOMAIN)) throw new Error('한양대학교 계정 로그인이 필요합니다.'); return email; }
-function requirePortalUser_(token) { const cachedEmail = token && CacheService.getScriptCache().get('portal-session:' + String(token)); if (cachedEmail && cachedEmail.endsWith('@' + ALLOWED_DOMAIN)) return cachedEmail; throw new Error('한양대학교 계정 연결이 필요합니다.'); }
-function escapeHtml_(value) { return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
