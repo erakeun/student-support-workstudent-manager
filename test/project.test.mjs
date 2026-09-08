@@ -150,7 +150,7 @@ test('로그인 후 학생·관리자 전용 포털과 운영 CRUD가 연결된�
   assert.match(student, /내 정보/);
   assert.match(admin, /월별 근로유형 예산/);
   assert.match(admin, /actualCost/);
-  assert.match(admin, /countScheduledMinutes/);
+  assert.match(admin, /monthlyBudgetRows/);
   for (const action of [
     'adminUpsertStudent',
     'adminResetPassword',

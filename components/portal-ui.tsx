@@ -72,14 +72,24 @@ export function activeSchedules(data: PortalData, studentId?: string) {
     (s) =>
       s.active !== false &&
       String(s.semesterId) === String(data.settings.activeSemester) &&
+      data.students.some(student => student.studentId === s.studentId && student.active !== false) &&
       (!studentId || s.studentId === studentId),
   );
 }
+export function scheduleOnDate(data: PortalData, schedule: Schedule, date: string) {
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const term = activeSemester(data);
+  const student = data.students.find(row => row.studentId === schedule.studentId);
+  return day >= 1 && day <= 5 && schedule.active !== false && student?.active !== false &&
+    String(schedule.semesterId) === String(data.settings.activeSemester) &&
+    (!term?.startDate || date >= term.startDate) && (!term?.endDate || date <= term.endDate) &&
+    (!student?.startDate || date >= student.startDate) && (!student?.endDate || date <= student.endDate) &&
+    (schedule.date ? schedule.date === date : Number(schedule.dayOfWeek) === day);
+}
 export function todaySchedules(data: PortalData, studentId?: string) {
-  const day = seoulNow().getDay();
   const today = isoDate();
   return activeSchedules(data, studentId)
-    .filter((s) => s.date ? s.date === today : Number(s.dayOfWeek) === day)
+    .filter((s) => scheduleOnDate(data, s, today))
     .sort((a, b) => minutes(a.startTime) - minutes(b.startTime));
 }
 export function scheduleState(schedule: Schedule) {

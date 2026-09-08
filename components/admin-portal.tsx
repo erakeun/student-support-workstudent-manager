@@ -2,6 +2,7 @@
 /* oxlint-disable jsx-a11y/label-has-associated-control jsx-a11y/prefer-tag-over-role typescript/no-deprecated typescript/no-base-to-string typescript/no-floating-promises */
 
 import { FormEvent, useState } from 'react';
+import { monthlyBudgetRows } from '@/lib/budget-calculation';
 import {
   BookOpenText,
   CalendarDays,
@@ -68,6 +69,7 @@ import {
   todaySchedules,
   workerTypeKey,
   workerTypeName,
+  scheduleOnDate,
 } from './portal-ui';
 
 type AdminView =
@@ -561,9 +563,11 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
   const rows = data.schedules.filter(
     (s) =>
       s.active !== false &&
+      String(s.semesterId) === String(data.settings.activeSemester) &&
       data.students.some(
         (st) =>
           st.studentId === s.studentId &&
+          st.active !== false &&
           (part === 'all' || st.partId === part) &&
           (workerType === 'all' || workerTypeKey(st.workerType) === workerType) &&
           (student === 'all' || st.studentId === student),
@@ -573,8 +577,8 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
   const lastDate = new Date(year, monthNumber, 0).getDate();
   const monthly = Array.from({ length: lastDate }, (_, index) => {
     const date = `${month}-${String(index + 1).padStart(2, '0')}`;
-    const day = new Date(`${date}T12:00:00+09:00`).getDay();
-    return { date, day, rows: rows.filter((schedule) => schedule.date ? schedule.date === date : Number(schedule.dayOfWeek) === day) };
+    const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+    return { date, day, rows: rows.filter((schedule) => scheduleOnDate(data, schedule, date)) };
   }).filter((item) => item.day >= 1 && item.day <= 5);
   return (
     <>
@@ -1283,34 +1287,7 @@ function Handovers({ data, edit, onAction }: { data: PortalData; edit: (e: Edito
 
 function Budget({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
   const [month, setMonth] = useState(monthKey());
-  const term = activeSemester(data);
-  const monthStart = `${month}-01`;
-  const [year, monthNumber] = month.split('-').map(Number);
-  const monthEnd = `${month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
-  const wageFor = (student: PortalData['students'][number]) => {
-    const individual = Number(student.hourlyWage || 0);
-    if (individual > 0) return { wage: individual, source: '개별' };
-    const defaultWage = Number(data.settings.defaultHourlyWage || 10320);
-    return { wage: defaultWage, source: '기본 시급' };
-  };
-  const countScheduledMinutes = (student: PortalData['students'][number]) => {
-    const start = [monthStart, term?.startDate || monthStart, student.startDate || monthStart].sort().at(-1) || monthStart;
-    const end = [monthEnd, term?.endDate || monthEnd, student.endDate || monthEnd].sort()[0] || monthEnd;
-    if (start > end) return 0;
-    let total = 0;
-    for (const cursor = new Date(`${start}T12:00:00+09:00`); cursor <= new Date(`${end}T12:00:00+09:00`); cursor.setDate(cursor.getDate() + 1)) {
-      const day = cursor.getDay();
-      const date = cursor.toISOString().slice(0, 10);
-      data.schedules.filter((schedule) => schedule.active !== false && schedule.studentId === student.studentId && (schedule.date ? schedule.date === date : Number(schedule.dayOfWeek) === day) && (!term || String(schedule.semesterId) === String(term.semesterId))).forEach((schedule) => { total += minutes(schedule.endTime) - minutes(schedule.startTime); });
-    }
-    return total;
-  };
-  const rows = data.students.filter((student) => student.active !== false).map((student) => {
-    const scheduledMinutes = countScheduledMinutes(student);
-    const actualMinutes = data.workLogs.filter((log) => log.studentId === student.studentId && log.status === 'COMPLETE' && log.date >= monthStart && log.date <= monthEnd).reduce((sum, log) => sum + Number(log.minutes || 0), 0);
-    const wage = wageFor(student);
-    return { student, scheduledMinutes, actualMinutes, wage: wage.wage, wageSource: wage.source, scheduledCost: Math.round(scheduledMinutes / 60 * wage.wage), actualCost: Math.round(actualMinutes / 60 * wage.wage) };
-  });
+  const rows = monthlyBudgetRows(data, month);
   const total = rows.reduce((sum, row) => ({ scheduledMinutes: sum.scheduledMinutes + row.scheduledMinutes, actualMinutes: sum.actualMinutes + row.actualMinutes, scheduledCost: sum.scheduledCost + row.scheduledCost, actualCost: sum.actualCost + row.actualCost }), { scheduledMinutes: 0, actualMinutes: 0, scheduledCost: 0, actualCost: 0 });
   const saved = (data.budgets || []).find(item => item.month === month) || {month,totalBudget:'',nationalBudget:'',internalBudget:'',shortTermBudget:'',note:''};
   const cards = [
@@ -1629,7 +1606,7 @@ function StudentFields({
           <NativeSelectOption value="NATIONAL_WORK">
             국가근로
           </NativeSelectOption>
-          <NativeSelectOption value="OTHER">교내근로</NativeSelectOption>
+          <NativeSelectOption value={r.workerType === 'INTERNAL_WORK' ? 'INTERNAL_WORK' : 'OTHER'}>교내근로</NativeSelectOption>
           <NativeSelectOption value="SHORT_TERM">단기근로</NativeSelectOption>
         </NativeSelect>
       </label>

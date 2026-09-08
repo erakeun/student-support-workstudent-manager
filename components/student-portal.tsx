@@ -43,6 +43,7 @@ import {
   partName,
   scheduleState,
   todaySchedules,
+  scheduleOnDate,
 } from './portal-ui';
 
 type StudentView =
@@ -95,6 +96,7 @@ export function StudentPortal({
     .filter((log) => log.date.startsWith(monthKey()))
     .reduce((sum, log) => sum + Number(log.minutes || 0), 0);
   const semester = activeSemester(data);
+  const semesterPeriodKnown = Boolean(semester?.startDate && semester?.endDate);
   const semesterMinutes = complete
     .filter(
       (log) =>
@@ -125,13 +127,13 @@ export function StudentPortal({
             value={
               working
                 ? '근무중'
-                : today.some((s) => scheduleState(s) === '종료')
-                  ? '근무 완료'
-                  : '근무 전'
+                : complete.some((log) => log.date === isoDate())
+                  ? '퇴근 기록 있음'
+                  : today.some((s) => scheduleState(s) === '종료') ? '출퇴근 기록 없음' : '근무 전'
             }
           />
           <Summary label="이번 달 누적" value={hoursText(monthlyMinutes)} />
-          <Summary label="이번 학기 누적" value={hoursText(semesterMinutes)} />
+          <Summary label="이번 학기 누적" value={semesterPeriodKnown ? hoursText(semesterMinutes) : '학기 기간 확인 필요'} />
         </div>
       </section>
       <section className="mt-5 grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
@@ -187,7 +189,7 @@ export function StudentPortal({
                 ))}
               </div>
             ) : (
-              <Empty>오늘 정규 근무가 없습니다.</Empty>
+              <div className="space-y-3"><p className="text-sm text-slate-500">오늘 정규 근무가 없습니다. 시간표 밖 기록은 관리자 확인 대상으로 표시됩니다.</p><Button className="h-12 w-full" disabled={busy} variant={working ? 'destructive' : 'default'} onClick={() => void onAction(working ? 'clockOut' : 'clockIn').catch(() => undefined)}>{working ? '퇴근하기' : '출근하기'}</Button></div>
             )}
           </CardContent>
         </Card>
@@ -305,12 +307,12 @@ function ScheduleView({ data }: { data: PortalData }) {
   const lastDate = new Date(year, monthNumber, 0).getDate();
   const calendarRows = Array.from({ length: lastDate }, (_, index) => {
     const date = `${month}-${String(index + 1).padStart(2, '0')}`;
-    const day = new Date(`${date}T12:00:00+09:00`).getDay();
+    const day = new Date(`${date}T12:00:00Z`).getUTCDay();
     return {
       date,
       day,
       schedules: data.schedules.filter(
-        (s) => (s.date ? s.date === date : Number(s.dayOfWeek) === day) && s.active !== false,
+        (s) => scheduleOnDate(data, s, date),
       ),
     };
   }).filter((row) => row.day >= 1 && row.day <= 5);

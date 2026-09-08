@@ -48,7 +48,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.1', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -86,7 +86,11 @@ function route_(request) {
       studentAcknowledgeHandover: () => ({ ok: true, record: studentAcknowledgeHandover_(requireRole_(request.token, 'STUDENT'), request.handoverId) }),
     };
     if (!actions[request.action]) throw new Error('지원하지 않는 요청입니다.');
-    return actions[request.action]();
+    if (['health', 'adminLogin', 'studentLogin', 'session', 'logout', 'adminBootstrap', 'studentBootstrap'].includes(request.action)) return actions[request.action]();
+    // Keep duplicate clock-ins and simultaneous read/modify/write requests atomic.
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) throw new Error('다른 저장 요청을 처리 중입니다. 잠시 후 다시 시도하세요.');
+    try { return actions[request.action](); } finally { lock.releaseLock(); }
   } catch (error) {
     return { ok: false, error: error.message || '서버 처리 중 오류가 발생했습니다.' };
   }
@@ -134,7 +138,7 @@ function createSession_(user) {
 }
 function endSession_(token) { if (token) CacheService.getScriptCache().remove('app-session:' + String(token)); }
 function requireSession_(token) { const raw = token && CacheService.getScriptCache().get('app-session:' + String(token)); if (!raw) throw new Error('로그인이 만료되었습니다. 다시 로그인하세요.'); return JSON.parse(raw); }
-function requireRole_(token, role) { const user = requireSession_(token); if (user.role !== role) throw new Error('권한이 없습니다.'); return user; }
+function requireRole_(token, role) { const user = sessionInfo_(token).user; if (user.role !== role) throw new Error('권한이 없습니다.'); return user; }
 
 function initializeDatabase(actorEmail) {
   const beforeStudents = countRows_('Students');
@@ -251,6 +255,10 @@ function readStudentData_(user) {
   // 지원팀과 예비군연대가 같은 사무실의 업무 정보를 함께 확인한다.
   // 대체근무 후보는 기존 정책대로 같은 파트에만 제한한다.
   const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers });
+  data.budgets = [];
+  const studentSettings = {};
+  ['activeSemester', 'timezone', 'attendanceEnabled', 'substitutionEnabled', 'handoverEnabled', 'defaultWorkStartTime', 'defaultWorkEndTime'].forEach(key => { if (key in data.settings) studentSettings[key] = data.settings[key]; });
+  data.settings = studentSettings;
   data.currentUser = { role: 'STUDENT', studentId: student.studentId, name: student.name, partId: student.partId };
   return data;
 }
@@ -319,7 +327,7 @@ function adminSaveSettings_(user, values) { const wage = Number((values || {}).d
 
 function adminUpsertBudget_(user, input) {
   const record = Object.assign({}, input || {});
-  if (!/^\d{4}-\d{2}$/.test(String(record.month || ''))) throw new Error('예산 월을 확인하세요.');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(record.month || ''))) throw new Error('예산 월을 확인하세요.');
   ['totalBudget', 'nationalBudget', 'internalBudget', 'shortTermBudget'].forEach(key => { record[key] = optionalBudget_(record[key]); });
   record.note = safeText_(record.note, 500); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
   return upsertRecord_('Budgets', record);
@@ -450,21 +458,24 @@ function readTable_(name) {
   const sheet = spreadsheet_().getSheetByName(name); if (!sheet || sheet.getLastRow() < 2) return [];
   const liveHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, liveHeaders.length).getValues().filter(row => row.some(value => value !== '')).map(row => liveHeaders.reduce((record, header, index) => {
-    if (!header) return record; const value = row[index];
-    if (!(value instanceof Date)) record[header] = value;
-    else if (['startTime', 'endTime'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'HH:mm');
-    else if (header === 'month') record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-MM');
-    else if (['semesterId', 'value'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-M');
-    else if (header.toLowerCase().includes('date')) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');
-    else record[header] = Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
+    if (!header) return record; record[header] = normalizeCell_(header, row[index]);
     return record;
   }, {}));
+}
+
+function normalizeCell_(header, value) {
+  if (!(value instanceof Date)) return value;
+  if (['startTime', 'endTime'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'HH:mm');
+  if (header === 'month') return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM');
+  if (['semesterId', 'value'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'yyyy-M');
+  if (['date', 'startDate', 'endDate'].includes(header)) return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');
+  return Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
 function upsertRecord_(tableName, patch) {
   if (!TABLES[tableName] || !patch || typeof patch !== 'object') throw new Error('저장할 데이터가 없습니다.'); ensureTable_(tableName);
   const sheet = spreadsheet_().getSheetByName(tableName); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const idKey = TABLES[tableName][0]; patch[idKey] = String(patch[idKey] || Utilities.getUuid());
-  const existing = readTable_(tableName).find(row => String(row[idKey]) === String(patch[idKey])) || {}; const record = Object.assign({}, existing, patch); const idColumn = headers.indexOf(idKey) + 1; const ids = sheet.getLastRow() < 2 ? [] : sheet.getRange(2, idColumn, sheet.getLastRow() - 1, 1).getValues(); const index = ids.findIndex(row => String(row[0]) === String(record[idKey])); const values = headers.map(header => record[header] === undefined ? '' : record[header]);
+  const existing = readTable_(tableName).find(row => String(row[idKey]) === String(patch[idKey])) || {}; const record = Object.assign({}, existing, patch); const idColumn = headers.indexOf(idKey) + 1; const ids = sheet.getLastRow() < 2 ? [] : sheet.getRange(2, idColumn, sheet.getLastRow() - 1, 1).getValues(); const index = ids.findIndex(row => String(normalizeCell_(idKey, row[0])) === String(record[idKey])); const values = headers.map(header => record[header] === undefined ? '' : record[header]);
   if (index >= 0) sheet.getRange(index + 2, 1, 1, headers.length).setValues([values]); else sheet.appendRow(values); return record;
 }
 
