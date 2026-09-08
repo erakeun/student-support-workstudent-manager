@@ -64,3 +64,10 @@ test('Google Sheet 날짜형 월 ID 수정은 기존 행을 찾아 중복 생성
   b.spreadsheet_=()=>({getSheetByName:()=>sheet});b.ensureTable_=()=>{};b.Utilities={getUuid:()=> 'TEST_UUID',formatDate:(_d,_tz,format)=>format==='yyyy-MM'?'2026-09':'2026-9'};
   b.upsertRecord_('Budgets',{month:'2026-09',totalBudget:200});assert.equal(rows.length,2);assert.equal(rows[1][1],200);assert.equal(rows[1][2],'ORIGINAL');
 });
+test('일반 저장의 스키마 확인은 기존 시트 전체 서식을 다시 적용하지 않는다',()=>{
+  const b=backend();let formatting=0;
+  const headers=['month','totalBudget','supportBudget','reserveBudget','shortTermBudget','note','updatedAt','updatedBy','nationalBudget','internalBudget'];
+  const sheet={getLastRow:()=>2,getLastColumn:()=>headers.length,getRange:()=>({getValues:()=>[headers]}),setFrozenRows:()=>{formatting++;throw new Error('Unexpected formatting');}};
+  b.spreadsheet_=()=>({getSheetByName:()=>sheet});
+  b.ensureTable_('Budgets',true);assert.equal(formatting,0);
+});

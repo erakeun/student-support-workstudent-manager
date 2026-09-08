@@ -5,6 +5,7 @@
  */
 const TIMEZONE = 'Asia/Seoul';
 const SESSION_TTL_SECONDS = 21600;
+let requestSpreadsheet = null;
 
 const TABLES = {
   Parts: ['partId', 'partName', 'displayOrder', 'color', 'active', 'defaultHourlyWage', 'note'],
@@ -48,7 +49,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.1', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.2', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -207,7 +208,7 @@ function createInitialAdminAccount(loginId, initialPassword, name) {
   return { adminId: record.adminId, loginId: record.loginId, name: record.name, active: record.active };
 }
 
-function ensureTable_(name) {
+function ensureTable_(name, schemaOnly) {
   const sheet = spreadsheet_().getSheetByName(name) || spreadsheet_().insertSheet(name);
   const expected = TABLES[name];
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
@@ -216,6 +217,9 @@ function ensureTable_(name) {
     const missing = expected.filter(header => current.indexOf(header) < 0);
     if (missing.length) sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
   }
+  // Normal record writes must not reformat the entire operational sheet.
+  // Explicit initialization retains the original layout/migration behavior.
+  if (schemaOnly) return;
   sheet.setFrozenRows(1);
   const width = sheet.getLastColumn();
   sheet.getRange(1, 1, 1, width).setBackground('#e9eef3').setFontColor('#1f2937').setFontWeight('bold').setWrap(true);
@@ -473,7 +477,7 @@ function normalizeCell_(header, value) {
 }
 
 function upsertRecord_(tableName, patch) {
-  if (!TABLES[tableName] || !patch || typeof patch !== 'object') throw new Error('저장할 데이터가 없습니다.'); ensureTable_(tableName);
+  if (!TABLES[tableName] || !patch || typeof patch !== 'object') throw new Error('저장할 데이터가 없습니다.'); ensureTable_(tableName, true);
   const sheet = spreadsheet_().getSheetByName(tableName); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const idKey = TABLES[tableName][0]; patch[idKey] = String(patch[idKey] || Utilities.getUuid());
   const existing = readTable_(tableName).find(row => String(row[idKey]) === String(patch[idKey])) || {}; const record = Object.assign({}, existing, patch); const idColumn = headers.indexOf(idKey) + 1; const ids = sheet.getLastRow() < 2 ? [] : sheet.getRange(2, idColumn, sheet.getLastRow() - 1, 1).getValues(); const index = ids.findIndex(row => String(normalizeCell_(idKey, row[0])) === String(record[idKey])); const values = headers.map(header => record[header] === undefined ? '' : record[header]);
   if (index >= 0) sheet.getRange(index + 2, 1, 1, headers.length).setValues([values]); else sheet.appendRow(values); return record;
@@ -498,4 +502,4 @@ function parseDateTime_(date, time) { const value = new Date(String(date) + 'T' 
 function isActive_(value) { return !(value === false || String(value).toUpperCase() === 'FALSE' || String(value).toUpperCase() === 'N' || String(value) === '0'); }
 function safeText_(value, maxLength) { return String(value || '').replace(/[<>]/g, '').trim().slice(0, maxLength); }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
-function spreadsheet_() { const configuredId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'); if (configuredId) return SpreadsheetApp.openById(configuredId); const active = SpreadsheetApp.getActiveSpreadsheet(); if (!active) throw new Error('SPREADSHEET_ID를 설정하거나 Spreadsheet에 스크립트를 연결하세요.'); return active; }
+function spreadsheet_() { if (requestSpreadsheet) return requestSpreadsheet; const configuredId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'); const active = configuredId ? SpreadsheetApp.openById(configuredId) : SpreadsheetApp.getActiveSpreadsheet(); if (!active) throw new Error('SPREADSHEET_ID를 설정하거나 Spreadsheet에 스크립트를 연결하세요.'); requestSpreadsheet = active; return active; }
