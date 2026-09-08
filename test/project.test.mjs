@@ -145,5 +145,7 @@ test('GitHub Pages와 Sites 정적 배포 설정을 계속 사용한다', () => 
   const workflow = read('.github/workflows/pages.yml');
   const hosting = JSON.parse(read('.openai/hosting.json'));
   assert.match(workflow, /BASE_PATH:\s*\/student-support-workstudent-manager/);
+  assert.match(workflow, /mv dist\/client\/student-support-workstudent-manager\/_next dist\/client\/_next/);
+  assert.match(workflow, /touch dist\/client\/\.nojekyll/);
   assert.equal(hosting.static.directory, 'dist/client');
 });

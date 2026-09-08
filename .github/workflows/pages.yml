@@ -27,6 +27,13 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /student-support-workstudent-manager
+      - name: Normalize static assets for the project Pages mount
+        run: |
+          mv dist/client/student-support-workstudent-manager/_next dist/client/_next
+          rmdir dist/client/student-support-workstudent-manager
+          touch dist/client/.nojekyll
+          test -f dist/client/index.html
+          test -f dist/client/_next/static/css/*.css
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/client
