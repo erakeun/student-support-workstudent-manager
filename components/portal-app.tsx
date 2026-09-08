@@ -138,15 +138,23 @@ function successMessage(action: string) {
     adminUpsertSchedule: '시간표를 저장했습니다.',
     adminDeactivateSchedule: '시간표를 비활성화했습니다.',
     adminUpsertWorkLog: '근무기록과 수정 이력을 저장했습니다.',
+    adminCancelWorkLog: '근무기록을 삭제 처리하고 이력을 보존했습니다.',
     adminUpsertTask: '담당업무를 저장했습니다.',
     adminDeactivateTask: '담당업무를 비활성화했습니다.',
     adminCreateSemester: '새 학기를 생성했습니다.',
+    adminUpsertSemester: '학기 정보를 저장했습니다.',
     adminActivateSemester: '활성 학기를 전환했습니다.',
     adminUpsertPart: '파트 정보를 저장했습니다.',
+    adminDeactivatePart: '조직을 비활성화했습니다.',
     adminSaveSettings: '설정을 저장했습니다.',
     studentCreateSubstitution: '대체근무 요청을 등록했습니다.',
     studentApplySubstitution: '같은 파트 대체근무에 신청했습니다.',
     adminReviewSubstitution: '대체근무 요청을 처리했습니다.',
+    adminCancelSubstitution: '대체근무 요청을 취소했습니다.',
+    adminUpsertBudget: '월 예산을 저장했습니다.',
+    adminUpsertHandover: '인수인계를 저장했습니다.',
+    adminDeleteHandover: '인수인계를 삭제 처리했습니다.',
+    studentUpsertHandover: '인수인계를 저장했습니다.',
   };
   return labels[action] || '저장했습니다.';
 }

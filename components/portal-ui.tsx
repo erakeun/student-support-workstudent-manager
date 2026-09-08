@@ -2,6 +2,8 @@ import type { PortalData, Schedule, Student } from '@/lib/portal-types';
 
 export const DAYS = ['', '월', '화', '수', '목', '금'];
 export const PART_TONES: Record<string, string> = {
+  SUPPORT: 'border-sky-200 bg-sky-50 text-sky-800',
+  RESERVE: 'border-teal-200 bg-teal-50 text-teal-800',
   'student-support': 'border-sky-200 bg-sky-50 text-sky-800',
   'reserve-affairs': 'border-teal-200 bg-teal-50 text-teal-800',
   'chinese-support': 'border-amber-200 bg-amber-50 text-amber-800',
@@ -62,8 +64,9 @@ export function activeSchedules(data: PortalData, studentId?: string) {
 }
 export function todaySchedules(data: PortalData, studentId?: string) {
   const day = seoulNow().getDay();
+  const today = isoDate();
   return activeSchedules(data, studentId)
-    .filter((s) => Number(s.dayOfWeek) === day)
+    .filter((s) => s.date ? s.date === today : Number(s.dayOfWeek) === day)
     .sort((a, b) => minutes(a.startTime) - minutes(b.startTime));
 }
 export function scheduleState(schedule: Schedule) {

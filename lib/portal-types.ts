@@ -5,6 +5,7 @@ export type Part = {
   color: string;
   active: boolean;
   defaultHourlyWage?: number | string;
+  note?: string;
 };
 
 export type Student = {
@@ -40,6 +41,7 @@ export type Schedule = {
   active: boolean;
   updatedAt?: string;
   updatedBy?: string;
+  date?: string;
 };
 
 export type WorkTask = {
@@ -107,6 +109,34 @@ export type Substitution = {
   approvedBy: string;
 };
 
+export type Budget = {
+  month: string;
+  totalBudget: number | string;
+  supportBudget: number | string;
+  reserveBudget: number | string;
+  shortTermBudget: number | string;
+  note: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+export type Handover = {
+  handoverId: string;
+  date: string;
+  partId: string;
+  authorStudentId: string;
+  title: string;
+  content: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'DONE';
+  priority: 'NORMAL' | 'IMPORTANT';
+  targetStudentId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+  visibility?: 'PUBLIC' | 'PART';
+  active?: boolean;
+};
+
 export type SessionUser = {
   role: 'STUDENT' | 'ADMIN' | 'STAFF';
   name: string;
@@ -127,6 +157,8 @@ export type PortalData = {
   semesters: Semester[];
   settings: Record<string, string>;
   substitutions?: Substitution[];
+  budgets?: Budget[];
+  handovers?: Handover[];
   substitutionCandidates?: Array<
     Pick<Student, 'studentId' | 'name' | 'partId'>
   >;

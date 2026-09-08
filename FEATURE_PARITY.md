@@ -35,7 +35,7 @@
 
 ## 학생지원팀 고유 적용 원칙
 
-- 파트는 `student-support`, `reserve-affairs`, `chinese-support` 세 개를 유지한다.
+- V3까지는 `student-support`, `reserve-affairs`, `chinese-support` 세 파트를 사용했다. V4에서는 레거시 행을 보존한 채 `SUPPORT`, `RESERVE` 두 조직으로 통합하고 단기근로는 `workerType`으로 유지한다.
 - 대체근무 후보·조회·저장은 서버에서 동일 `partId`로 제한한다.
 - 단기근로자는 `SHORT_TERM`과 `startDate`/`endDate`를 사용하며 종료 후에도 계정과 기록을 자동 삭제하지 않는다.
 - 정규 예정은 `Schedules`, 실제 출퇴근은 `WorkLogs`로 분리하고 누적시간은 완료된 `WorkLogs`로 계산한다.
@@ -73,3 +73,20 @@
 | 공휴일·특정일 예외 | Not applicable | 현재 30분 반복 시간표 범위; 후속 확장 후보 |
 
 `Missing`으로 남은 필수 항목은 없다. `Not applicable`과 `Intentionally different`는 학생지원팀의 운영 요구와 확정 데이터 범위에 따른 구분이다.
+
+## V4 운영 고도화 판정
+
+| 요구 | 상태 | 구현 |
+|---|---|---|
+| 지원팀·예비군연대 조직 | Implemented | 관계 ID를 `SUPPORT`·`RESERVE`로 비파괴 변환, 레거시 Parts 비활성 보존 |
+| 단기근로 근로유형 | Implemented | `SHORT_TERM` 유지, 지원팀 소속으로 관리 |
+| 월·조직별 예산 | Implemented | `Budgets`, 전체/지원/예비군/단기 예산 직접 편집 |
+| 기본 시급 10,320원 | Implemented | 학생 개별값 우선, 없으면 공통 기본값 |
+| 주간·월간 달력 | Implemented | 조직·근로유형·학생 필터, 월간 날짜 셀, 블록 클릭 수정 |
+| 날짜 지정 일정 | Implemented | 기존 41 반복 구간 보존, 선택적 `Schedules.date` 추가 |
+| 인수인계 | Implemented | 학생 작성·본인 수정·완료, 관리자 공지·중요·수정·완료·소프트 삭제 |
+| 관리자 전 페이지 운영 편집 | Implemented | 학생·시간표·근무기록·대체근무·업무·예산·학기·조직·설정 |
+| 모바일 학생 UX | Implemented | 8개 메뉴, 큰 출퇴근 버튼, 최근 인수인계 |
+| 참고 사이트 보호 | Verified | 레퍼런스는 읽기 전용으로만 열었고 어떤 쓰기도 하지 않음 |
+
+지침의 서울 총무팀 URL은 점검 시 GitHub Pages 404를 반환해 화면 분석이 불가능했다. 접근 가능한 ERICA 레퍼런스의 로그인·모바일 동선과 기존 조사 기록을 사용했으며, 확인할 수 없는 화면은 추측하지 않았다.

@@ -1,5 +1,5 @@
 /**
- * 한양대학교 ERICA 학생지원팀 근로관리 API V3
+ * 한양대학교 ERICA 학생지원팀 근로관리 API V4
  * 운영 데이터와 인증 해시의 원본은 Google Spreadsheet다.
  * 기존 행은 삭제하지 않고 initializeDatabase()가 누락 열/시트만 추가한다.
  */
@@ -7,9 +7,9 @@ const TIMEZONE = 'Asia/Seoul';
 const SESSION_TTL_SECONDS = 21600;
 
 const TABLES = {
-  Parts: ['partId', 'partName', 'displayOrder', 'color', 'active', 'defaultHourlyWage'],
+  Parts: ['partId', 'partName', 'displayOrder', 'color', 'active', 'defaultHourlyWage', 'note'],
   Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active', 'loginId', 'passwordHash', 'passwordSalt', 'role', 'lastPasswordChangedAt', 'email', 'phone', 'hourlyWage'],
-  Schedules: ['scheduleId', 'studentId', 'dayOfWeek', 'startTime', 'endTime', 'semesterId', 'active', 'updatedAt', 'updatedBy'],
+  Schedules: ['scheduleId', 'studentId', 'dayOfWeek', 'startTime', 'endTime', 'semesterId', 'active', 'updatedAt', 'updatedBy', 'date'],
   WorkLogs: ['logId', 'studentId', 'date', 'clockIn', 'clockOut', 'minutes', 'status', 'note', 'scheduleId', 'partId', 'reason', 'editedBy', 'editedAt', 'createdBy', 'createdAt', 'flagCode'],
   Tasks: ['taskId', 'taskName', 'description', 'partId', 'studentId', 'employeeId', 'keywords', 'active', 'updatedAt', 'updatedBy'],
   Employees: ['employeeId', 'name', 'partId', 'extension', 'tasks', 'active'],
@@ -18,14 +18,18 @@ const TABLES = {
   Substitutions: ['substitutionId', 'scheduleId', 'date', 'requesterStudentId', 'substituteStudentId', 'partId', 'status', 'reason', 'createdAt', 'updatedAt', 'approvedBy'],
   MigrationLog: ['migrationId', 'appliedAt', 'version', 'description', 'beforeStudents', 'afterStudents', 'beforeSchedules', 'afterSchedules'],
   Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy'],
+  Budgets: ['month', 'totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget', 'note', 'updatedAt', 'updatedBy'],
+  Handovers: ['handoverId', 'date', 'partId', 'authorStudentId', 'title', 'content', 'status', 'priority', 'targetStudentId', 'createdAt', 'updatedAt', 'completedAt', 'visibility', 'active', 'deletedAt', 'deletedBy'],
 };
 
 const COLUMN_WIDTHS = {
-  Parts: [150, 120, 90, 90, 70, 120], Students: [135, 90, 110, 130, 120, 100, 100, 180, 180, 180, 220, 180, 70, 120, 110, 110, 80, 160, 190, 130, 110],
-  Schedules: [135, 125, 90, 90, 90, 100, 70, 160, 170], WorkLogs: [135, 125, 100, 165, 165, 85, 105, 180, 135, 125, 180, 170, 165, 170, 165, 180],
+  Parts: [150, 120, 90, 90, 70, 120, 220], Students: [135, 90, 110, 130, 120, 100, 100, 180, 180, 180, 220, 180, 70, 120, 110, 110, 80, 160, 190, 130, 110],
+  Schedules: [135, 125, 90, 90, 90, 100, 70, 160, 170, 100], WorkLogs: [135, 125, 100, 165, 165, 85, 105, 180, 135, 125, 180, 170, 165, 170, 165, 180],
   Tasks: [135, 150, 220, 125, 125, 125, 180, 70, 160, 170], Employees: [135, 90, 125, 90, 220, 70],
   Semesters: [110, 150, 100, 100, 70, 160, 170], Settings: [230, 430], Substitutions: [145, 135, 100, 150, 150, 125, 100, 200, 165, 165, 170], MigrationLog: [140, 165, 90, 280, 100, 100, 110, 110],
   Admins: [140, 120, 150, 120, 120, 80, 170, 170, 150],
+  Budgets: [100, 130, 130, 130, 130, 240, 170, 160],
+  Handovers: [145, 100, 120, 145, 220, 420, 110, 110, 145, 170, 170, 170, 100, 70, 170, 160],
 };
 
 function doGet(e) {
@@ -44,7 +48,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v3', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v4', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -58,18 +62,26 @@ function route_(request) {
       adminUpsertSchedule: () => ({ ok: true, record: adminUpsertSchedule_(requireRole_(request.token, 'ADMIN'), request.record) }),
       adminDeactivateSchedule: () => ({ ok: true, record: setActive_('Schedules', 'scheduleId', request.scheduleId, false, requireRole_(request.token, 'ADMIN')) }),
       adminUpsertWorkLog: () => ({ ok: true, record: adminUpsertWorkLog_(requireRole_(request.token, 'ADMIN'), request.record) }),
+      adminCancelWorkLog: () => ({ ok: true, record: adminCancelWorkLog_(requireRole_(request.token, 'ADMIN'), request.logId, request.reason) }),
       adminUpsertTask: () => ({ ok: true, record: adminUpsertTask_(requireRole_(request.token, 'ADMIN'), request.record) }),
       adminDeactivateTask: () => ({ ok: true, record: setActive_('Tasks', 'taskId', request.taskId, false, requireRole_(request.token, 'ADMIN')) }),
       adminUpsertPart: () => ({ ok: true, record: adminUpsertPart_(requireRole_(request.token, 'ADMIN'), request.record) }),
+      adminDeactivatePart: () => ({ ok: true, record: setActive_('Parts', 'partId', request.partId, false, requireRole_(request.token, 'ADMIN')) }),
       adminCreateSemester: () => ({ ok: true, record: adminCreateSemester_(requireRole_(request.token, 'ADMIN'), request.record) }),
+      adminUpsertSemester: () => ({ ok: true, record: adminUpsertSemester_(requireRole_(request.token, 'ADMIN'), request.record) }),
       adminActivateSemester: () => ({ ok: true, semesterId: adminActivateSemester_(requireRole_(request.token, 'ADMIN'), request.semesterId) }),
       adminSaveSettings: () => ({ ok: true, settings: adminSaveSettings_(requireRole_(request.token, 'ADMIN'), request.settings) }),
       adminReviewSubstitution: () => ({ ok: true, record: adminReviewSubstitution_(requireRole_(request.token, 'ADMIN'), request.substitutionId, request.status) }),
+      adminCancelSubstitution: () => ({ ok: true, record: adminCancelSubstitution_(requireRole_(request.token, 'ADMIN'), request.substitutionId) }),
+      adminUpsertBudget: () => ({ ok: true, record: adminUpsertBudget_(requireRole_(request.token, 'ADMIN'), request.record) }),
+      adminUpsertHandover: () => ({ ok: true, record: adminUpsertHandover_(requireRole_(request.token, 'ADMIN'), request.record) }),
+      adminDeleteHandover: () => ({ ok: true, record: adminDeleteHandover_(requireRole_(request.token, 'ADMIN'), request.handoverId) }),
       clockIn: () => ({ ok: true, record: clockIn_(requireRole_(request.token, 'STUDENT')) }),
       clockOut: () => ({ ok: true, record: clockOut_(requireRole_(request.token, 'STUDENT')) }),
       studentCreateSubstitution: () => ({ ok: true, record: studentCreateSubstitution_(requireRole_(request.token, 'STUDENT'), request.scheduleId, request.date, request.reason) }),
       studentApplySubstitution: () => ({ ok: true, record: studentApplySubstitution_(requireRole_(request.token, 'STUDENT'), request.substitutionId) }),
       studentUpdateContact: () => ({ ok: true, record: studentUpdateContact_(requireRole_(request.token, 'STUDENT'), request.email, request.phone) }),
+      studentUpsertHandover: () => ({ ok: true, record: studentUpsertHandover_(requireRole_(request.token, 'STUDENT'), request.record) }),
     };
     if (!actions[request.action]) throw new Error('지원하지 않는 요청입니다.');
     return actions[request.action]();
@@ -126,21 +138,46 @@ function initializeDatabase(actorEmail) {
   const beforeStudents = countRows_('Students');
   const beforeSchedules = countRows_('Schedules');
   Object.keys(TABLES).forEach(ensureTable_);
-  seedIfEmpty_('Parts', [['student-support', '학생지원', 1, '#0b72b9', true, ''], ['reserve-affairs', '예비군·병무', 2, '#2f7f76', true, ''], ['chinese-support', '단기근로', 3, '#d4872b', true, '']]);
+  seedIfEmpty_('Parts', [['SUPPORT', '지원팀', 1, '#0b72b9', true, '', '학생지원·단기근로 운영'], ['RESERVE', '예비군연대', 2, '#2f7f76', true, '', '예비군·병무 운영']]);
   seedIfEmpty_('Semesters', [['2026-2', '2026학년도 2학기', '', '', true, new Date(), actorEmail || 'migration']]);
   seedIfEmpty_('Settings', [['activeSemester', '2026-2'], ['timezone', TIMEZONE], ['ADMIN_EMAILS', 'keun0810@hanyang.ac.kr']]);
-  ensureSettingDefault_('nationalWorkDefaultHourlyWage', '');
-  ensureSettingDefault_('shortTermDefaultHourlyWage', '');
-  ensureSettingDefault_('otherDefaultHourlyWage', '');
+  ensureSettingDefault_('defaultHourlyWage', '10320');
+  ensureSettingDefault_('defaultWorkStartTime', '09:00');
+  ensureSettingDefault_('defaultWorkEndTime', '17:00');
+  ensureSettingDefault_('attendanceEnabled', 'true');
+  ensureSettingDefault_('substitutionEnabled', 'true');
+  ensureSettingDefault_('handoverEnabled', 'true');
+  ensureSettingDefault_('nationalWorkDefaultHourlyWage', '10320');
+  ensureSettingDefault_('shortTermDefaultHourlyWage', '10320');
+  ensureSettingDefault_('otherDefaultHourlyWage', '10320');
   migrateStudentDefaults_();
+  const version = 'V4-OPERATIONS-2026-09-08';
+  const migrationApplied = readTable_('MigrationLog').some(row => row.version === version);
+  if (!migrationApplied) migrateOrganizationV4_(actorEmail);
   const afterStudents = countRows_('Students');
   const afterSchedules = countRows_('Schedules');
   if (beforeStudents !== afterStudents || beforeSchedules !== afterSchedules) throw new Error('마이그레이션 중 기존 행 수가 변경되어 중단했습니다.');
-  const shortPart = findById_('Parts', 'partId', 'chinese-support');
-  if (shortPart && shortPart.partName !== '단기근로') upsertRecord_('Parts', { partId: shortPart.partId, partName: '단기근로' });
-  const version = 'V3-FULL-2026-09-08';
-  if (!readTable_('MigrationLog').some(row => row.version === version)) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '학생 연락처·개별시급·학번 초기계정·단기근로 표기 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
-  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V3 전체 구조를 확인했습니다.';
+  if (!migrationApplied) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '지원팀·예비군연대 조직 재편, 예산·인수인계·운영설정 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
+  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V4 운영 구조를 확인했습니다.';
+}
+
+function migrateOrganizationV4_(actorEmail) {
+  const canonical = [
+    { partId: 'SUPPORT', partName: '지원팀', displayOrder: 1, color: '#0b72b9', active: true, note: '학생지원·단기근로 운영' },
+    { partId: 'RESERVE', partName: '예비군연대', displayOrder: 2, color: '#2f7f76', active: true, note: '예비군·병무 운영' },
+  ];
+  canonical.forEach(row => upsertRecord_('Parts', row));
+  const map = { 'student-support': 'SUPPORT', 'chinese-support': 'SUPPORT', 'reserve-affairs': 'RESERVE' };
+  ['Students', 'WorkLogs', 'Tasks', 'Employees', 'Substitutions'].forEach(table => {
+    readTable_(table).forEach(row => {
+      const next = map[String(row.partId || '')];
+      if (next) { row.partId = next; upsertRecord_(table, row); }
+    });
+  });
+  Object.keys(map).forEach(partId => {
+    const legacy = findById_('Parts', 'partId', partId);
+    if (legacy) upsertRecord_('Parts', { partId: partId, active: false, note: 'V4에서 ' + map[partId] + '로 비파괴 통합됨 · ' + String(actorEmail || 'migration') });
+  });
 }
 
 function createInitialAdminAccount(loginId, initialPassword, name) {
@@ -189,7 +226,7 @@ function readAdminData_(user) {
   const students = readTable_('Students').map(sanitizeStudentForAdmin_);
   const schedules = readTable_('Schedules');
   const workLogs = withWorkLogFlags_(readTable_('WorkLogs'), students, schedules);
-  return baseData_({ students: students, schedules: schedules, workLogs: workLogs, substitutions: readTable_('Substitutions') });
+  return baseData_({ students: students, schedules: schedules, workLogs: workLogs, substitutions: readTable_('Substitutions'), budgets: readTable_('Budgets'), handovers: readTable_('Handovers').filter(row => isActive_(row.active)) });
 }
 
 function readStudentData_(user) {
@@ -201,17 +238,18 @@ function readStudentData_(user) {
   const workLogs = withWorkLogFlags_(readTable_('WorkLogs').filter(row => String(row.studentId) === String(student.studentId)), [student], schedules);
   const samePartStudents = allStudents.filter(row => row.partId === student.partId && isActive_(row.active)).map(row => ({ studentId: row.studentId, name: row.name, partId: row.partId }));
   const substitutions = readTable_('Substitutions').filter(row => row.partId === student.partId && (row.requesterStudentId === student.studentId || row.status === 'OPEN' || row.substituteStudentId === student.studentId));
-  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active) && (row.partId === student.partId || !row.partId)), substitutions: substitutions, substitutionCandidates: samePartStudents });
+  const handovers = readTable_('Handovers').filter(row => isActive_(row.active) && (row.visibility === 'PUBLIC' || row.partId === student.partId || row.authorStudentId === student.studentId || row.targetStudentId === student.studentId));
+  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active) && (row.partId === student.partId || !row.partId)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers });
   data.currentUser = { role: 'STUDENT', studentId: student.studentId, name: student.name, partId: student.partId };
   return data;
 }
 
-function baseData_(overrides) { return Object.assign({ parts: readTable_('Parts').filter(row => isActive_(row.active)), students: [], schedules: [], workLogs: [], tasks: readTable_('Tasks'), employees: readTable_('Employees'), semesters: readTable_('Semesters'), settings: settingsObject_(), substitutions: [], substitutionCandidates: [] }, overrides || {}); }
+function baseData_(overrides) { return Object.assign({ parts: readTable_('Parts').filter(row => isActive_(row.active)), students: [], schedules: [], workLogs: [], tasks: readTable_('Tasks'), employees: readTable_('Employees'), semesters: readTable_('Semesters'), settings: settingsObject_(), substitutions: [], substitutionCandidates: [], budgets: readTable_('Budgets'), handovers: [] }, overrides || {}); }
 function sanitizeStudentForAdmin_(student) { const copy = Object.assign({}, student); delete copy.passwordHash; delete copy.passwordSalt; copy.hasPassword = Boolean(student.passwordHash && student.passwordSalt); return copy; }
 function sanitizeStudentForSelf_(student) { return { studentId: student.studentId, name: student.name, studentNumber: student.studentNumber, partId: student.partId, workerType: student.workerType, startDate: student.startDate, endDate: student.endDate, taskSummary: student.taskSummary, substituteTasks: student.substituteTasks, active: student.active, email: student.email, phone: student.phone }; }
 
 function adminUpsertStudent_(user, input, initialPassword) {
-  const record = Object.assign({}, input || {});
+  const incoming = Object.assign({}, input || {}); const existing = incoming.studentId && findById_('Students', 'studentId', incoming.studentId); const record = Object.assign({}, existing || {}, incoming);
   if (!record.name || !record.studentNumber || !record.partId) throw new Error('이름, 학번, 파트를 입력하세요.');
   if (!['NATIONAL_WORK', 'SHORT_TERM', 'OTHER'].includes(String(record.workerType))) throw new Error('근로유형을 확인하세요.');
   if (record.workerType === 'SHORT_TERM' && (!record.startDate || !record.endDate)) throw new Error('단기근로자는 시작일과 종료일이 필요합니다.');
@@ -231,6 +269,11 @@ function studentUpdateContact_(user, email, phone) { const student = findById_('
 function adminUpsertSchedule_(user, input) {
   const record = Object.assign({}, input || {}); const student = findById_('Students', 'studentId', record.studentId);
   if (!student) throw new Error('학생을 찾을 수 없습니다.');
+  if (record.date) {
+    const date = new Date(String(record.date) + 'T12:00:00+09:00');
+    if (Number.isNaN(date.getTime()) || date.getDay() < 1 || date.getDay() > 5) throw new Error('평일 날짜를 확인하세요.');
+    record.dayOfWeek = date.getDay();
+  }
   if (![1, 2, 3, 4, 5].includes(Number(record.dayOfWeek))) throw new Error('요일을 확인하세요.');
   validateHalfHour_(record.startTime); validateHalfHour_(record.endTime);
   if (timeMinutes_(record.startTime) >= timeMinutes_(record.endTime)) throw new Error('종료시간은 시작시간보다 늦어야 합니다.');
@@ -249,13 +292,59 @@ function adminUpsertWorkLog_(user, input) {
   return upsertRecord_('WorkLogs', record);
 }
 
+function adminCancelWorkLog_(user, logId, reason) {
+  const record = findById_('WorkLogs', 'logId', logId);
+  if (!record) throw new Error('근무기록을 찾을 수 없습니다.');
+  record.status = 'CANCELLED'; record.reason = String(reason || '관리자 삭제 처리'); record.editedBy = actorId_(user); record.editedAt = new Date();
+  return upsertRecord_('WorkLogs', record);
+}
+
 function adminUpsertTask_(user, input) { const record = Object.assign({}, input || {}); if (!record.taskName) throw new Error('업무명을 입력하세요.'); record.taskId = record.taskId || Utilities.getUuid(); record.active = record.active !== false; record.updatedAt = new Date(); record.updatedBy = actorId_(user); return upsertRecord_('Tasks', record); }
-function adminUpsertPart_(user, input) { const record = Object.assign({}, input || {}); if (!record.partId || !record.partName) throw new Error('파트 ID와 이름을 입력하세요.'); record.active = record.active !== false; return upsertRecord_('Parts', record); }
+function adminUpsertPart_(user, input) { const record = Object.assign({}, input || {}); if (!record.partId || !record.partName) throw new Error('파트 ID와 이름을 입력하세요.'); if (!/^[A-Z0-9_-]+$/.test(String(record.partId))) throw new Error('파트 ID는 영문 대문자·숫자·_-만 사용할 수 있습니다.'); record.active = record.active !== false; return upsertRecord_('Parts', record); }
 function adminCreateSemester_(user, input) { const record = Object.assign({}, input || {}); if (!record.semesterId || !record.semesterName || !record.startDate || !record.endDate) throw new Error('학기 정보를 모두 입력하세요.'); if (record.startDate > record.endDate) throw new Error('학기 종료일을 확인하세요.'); if (findById_('Semesters', 'semesterId', record.semesterId)) throw new Error('이미 존재하는 학기입니다.'); record.active = false; record.createdAt = new Date(); record.createdBy = actorId_(user); return upsertRecord_('Semesters', record); }
+function adminUpsertSemester_(user, input) { const record = Object.assign({}, input || {}); if (!record.semesterId || !record.semesterName || !record.startDate || !record.endDate) throw new Error('학기 정보를 모두 입력하세요.'); if (record.startDate > record.endDate) throw new Error('학기 종료일을 확인하세요.'); const existing = findById_('Semesters', 'semesterId', record.semesterId); record.active = existing ? existing.active : false; record.createdAt = existing ? existing.createdAt : new Date(); record.createdBy = existing ? existing.createdBy : actorId_(user); return upsertRecord_('Semesters', record); }
 function adminActivateSemester_(user, semesterId) { if (!findById_('Semesters', 'semesterId', semesterId)) throw new Error('학기를 찾을 수 없습니다.'); readTable_('Semesters').forEach(row => upsertRecord_('Semesters', { semesterId: row.semesterId, active: row.semesterId === semesterId })); setSetting_('activeSemester', semesterId); return semesterId; }
-function adminSaveSettings_(user, values) { Object.keys(values || {}).forEach(key => { if (key !== 'ADMIN_EMAILS') setSetting_(key, values[key]); }); return settingsObject_(); }
+function adminSaveSettings_(user, values) { const wage = Number((values || {}).defaultHourlyWage || settingsObject_().defaultHourlyWage || 0); if (wage <= 0) throw new Error('기본 시급은 0보다 커야 합니다.'); Object.keys(values || {}).forEach(key => { if (key !== 'ADMIN_EMAILS') setSetting_(key, values[key]); }); return settingsObject_(); }
+
+function adminUpsertBudget_(user, input) {
+  const record = Object.assign({}, input || {});
+  if (!/^\d{4}-\d{2}$/.test(String(record.month || ''))) throw new Error('예산 월을 확인하세요.');
+  ['totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget'].forEach(key => { record[key] = Math.max(0, Number(record[key] || 0)); });
+  record.note = safeText_(record.note, 500); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
+  return upsertRecord_('Budgets', record);
+}
+
+function validateHandover_(record) {
+  if (!record.date || !record.partId || !record.title || !record.content) throw new Error('날짜, 조직, 제목, 내용을 입력하세요.');
+  if (!['OPEN', 'IN_PROGRESS', 'DONE'].includes(String(record.status))) throw new Error('인수인계 상태를 확인하세요.');
+  if (!['NORMAL', 'IMPORTANT'].includes(String(record.priority))) throw new Error('인수인계 중요도를 확인하세요.');
+  record.title = safeText_(record.title, 120); record.content = safeText_(record.content, 2000); record.visibility = record.visibility === 'PART' ? 'PART' : 'PUBLIC'; record.active = record.active !== false;
+  record.completedAt = record.status === 'DONE' ? (record.completedAt || new Date()) : '';
+}
+
+function adminUpsertHandover_(user, input) {
+  const record = Object.assign({}, input || {}); const existing = record.handoverId && findById_('Handovers', 'handoverId', record.handoverId);
+  record.handoverId = record.handoverId || Utilities.getUuid(); record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
+  if (record.authorStudentId && !findById_('Students', 'studentId', record.authorStudentId)) throw new Error('작성 학생을 찾을 수 없습니다.');
+  validateHandover_(record); return upsertRecord_('Handovers', record);
+}
+
+function adminDeleteHandover_(user, handoverId) {
+  const record = findById_('Handovers', 'handoverId', handoverId); if (!record) throw new Error('인수인계를 찾을 수 없습니다.');
+  record.active = false; record.deletedAt = new Date(); record.deletedBy = actorId_(user); record.updatedAt = new Date(); return upsertRecord_('Handovers', record);
+}
+
+function studentUpsertHandover_(user, input) {
+  if (!settingEnabled_('handoverEnabled')) throw new Error('현재 인수인계 작성이 중지되어 있습니다.');
+  const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student);
+  const record = Object.assign({}, input || {}); const existing = record.handoverId && findById_('Handovers', 'handoverId', record.handoverId);
+  if (existing && existing.authorStudentId !== user.studentId) throw new Error('본인이 작성한 인수인계만 수정할 수 있습니다.');
+  record.handoverId = record.handoverId || Utilities.getUuid(); record.partId = student.partId; record.authorStudentId = user.studentId; record.priority = existing ? existing.priority : 'NORMAL'; record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
+  validateHandover_(record); return upsertRecord_('Handovers', record);
+}
 
 function clockIn_(user) {
+  if (!settingEnabled_('attendanceEnabled')) throw new Error('현재 출퇴근 기록이 중지되어 있습니다.');
   const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student); const today = today_();
   if (readTable_('WorkLogs').some(row => row.studentId === student.studentId && row.status === 'WORKING')) throw new Error('이미 진행 중인 출근 기록이 있습니다.');
   const schedules = todaySchedules_(student.studentId, today); const now = new Date(); const flag = schedules.length ? '' : 'OUTSIDE_SCHEDULE';
@@ -263,6 +352,7 @@ function clockIn_(user) {
 }
 
 function clockOut_(user) {
+  if (!settingEnabled_('attendanceEnabled')) throw new Error('현재 출퇴근 기록이 중지되어 있습니다.');
   const record = readTable_('WorkLogs').find(row => row.studentId === user.studentId && row.status === 'WORKING');
   if (!record) throw new Error('진행 중인 출근 기록을 찾을 수 없습니다.');
   const end = new Date(); const start = new Date(record.clockIn); record.clockOut = end; record.minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)); record.status = 'COMPLETE'; record.flagCode = computeLogFlag_(record, findById_('Students', 'studentId', user.studentId), readTable_('Schedules'), readTable_('WorkLogs').filter(row => row.logId !== record.logId));
@@ -270,6 +360,7 @@ function clockOut_(user) {
 }
 
 function studentCreateSubstitution_(user, scheduleId, date, reason) {
+  if (!settingEnabled_('substitutionEnabled')) throw new Error('현재 대체근무 요청이 중지되어 있습니다.');
   const schedule = findById_('Schedules', 'scheduleId', scheduleId);
   if (!schedule || schedule.studentId !== user.studentId || !isActive_(schedule.active)) throw new Error('본인의 활성 시간표만 대체 요청할 수 있습니다.');
   if (!date) throw new Error('대체근무 날짜를 입력하세요.');
@@ -279,6 +370,7 @@ function studentCreateSubstitution_(user, scheduleId, date, reason) {
 }
 
 function studentApplySubstitution_(user, substitutionId) {
+  if (!settingEnabled_('substitutionEnabled')) throw new Error('현재 대체근무 신청이 중지되어 있습니다.');
   const request = findById_('Substitutions', 'substitutionId', substitutionId); const student = findById_('Students', 'studentId', user.studentId);
   if (!request || request.status !== 'OPEN') throw new Error('신청 가능한 대체근무가 아닙니다.');
   if (request.requesterStudentId === user.studentId) throw new Error('본인의 요청에는 신청할 수 없습니다.');
@@ -291,6 +383,12 @@ function adminReviewSubstitution_(user, substitutionId, status) {
   if (!request || !['APPROVED', 'REJECTED'].includes(String(status))) throw new Error('대체근무 처리값을 확인하세요.');
   if (status === 'APPROVED') { const requester = findById_('Students', 'studentId', request.requesterStudentId); const substitute = findById_('Students', 'studentId', request.substituteStudentId); if (!requester || !substitute || requester.partId !== substitute.partId || requester.partId !== request.partId) throw new Error('같은 파트 학생끼리만 대체근무를 승인할 수 있습니다.'); }
   request.status = status; request.updatedAt = new Date(); request.approvedBy = actorId_(user); return upsertRecord_('Substitutions', request);
+}
+
+function adminCancelSubstitution_(user, substitutionId) {
+  const request = findById_('Substitutions', 'substitutionId', substitutionId);
+  if (!request || ['APPROVED', 'CANCELLED'].includes(String(request.status))) throw new Error('취소할 수 있는 대체근무가 아닙니다.');
+  request.status = 'CANCELLED'; request.updatedAt = new Date(); request.approvedBy = actorId_(user); return upsertRecord_('Substitutions', request);
 }
 
 function withWorkLogFlags_(logs, students, schedules) { return logs.map(log => { const copy = Object.assign({}, log); const student = students.find(row => row.studentId === log.studentId); copy.flagCode = computeLogFlag_(copy, student, schedules, logs.filter(row => row.logId !== log.logId)); return copy; }); }
@@ -318,6 +416,7 @@ function readTable_(name) {
     if (!header) return record; const value = row[index];
     if (!(value instanceof Date)) record[header] = value;
     else if (['startTime', 'endTime'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'HH:mm');
+    else if (header === 'month') record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-MM');
     else if (['semesterId', 'value'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-M');
     else if (header.toLowerCase().includes('date')) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');
     else record[header] = Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
@@ -338,15 +437,17 @@ function seedIfEmpty_(name, rows) { const sheet = spreadsheet_().getSheetByName(
 function settingsObject_() { const settings = {}; readTable_('Settings').forEach(row => { settings[row.key] = String(row.value || ''); }); return settings; }
 function setSetting_(key, value) { return upsertRecord_('Settings', { key: key, value: value }); }
 function ensureSettingDefault_(key, value) { if (!readTable_('Settings').some(row => String(row.key) === String(key))) setSetting_(key, value); }
+function settingEnabled_(key) { const value = settingsObject_()[key]; return value === undefined || value === '' || String(value).toLowerCase() === 'true'; }
 function activeSemesterId_() { return settingsObject_().activeSemester || String((readTable_('Semesters').find(row => isActive_(row.active)) || {}).semesterId || ''); }
 function actorId_(user) { return String((user && (user.loginId || user.email || user.studentId)) || 'system'); }
 function today_() { return Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd'); }
-function todaySchedules_(studentId, date) { const day = new Date(date + 'T12:00:00+09:00').getDay(); return readTable_('Schedules').filter(row => row.studentId === studentId && Number(row.dayOfWeek) === day && String(row.semesterId) === activeSemesterId_() && isActive_(row.active)); }
+function todaySchedules_(studentId, date) { const day = new Date(date + 'T12:00:00+09:00').getDay(); return readTable_('Schedules').filter(row => row.studentId === studentId && (row.date ? row.date === date : Number(row.dayOfWeek) === day) && String(row.semesterId) === activeSemesterId_() && isActive_(row.active)); }
 function nearestScheduleId_(schedules) { if (!schedules.length) return ''; const now = Number(Utilities.formatDate(new Date(), TIMEZONE, 'H')) * 60 + Number(Utilities.formatDate(new Date(), TIMEZONE, 'm')); return schedules.slice().sort((a, b) => Math.abs(timeMinutes_(a.startTime) - now) - Math.abs(timeMinutes_(b.startTime) - now))[0].scheduleId; }
 function validateStudentPeriod_(student) { if (!student || !isActive_(student.active)) throw new Error('활성 학생을 찾을 수 없습니다.'); const today = today_(); if (student.startDate && today < student.startDate) throw new Error('근무 시작일 전입니다.'); if (student.endDate && today > student.endDate) throw new Error('근무 종료일이 지났습니다. 관리자에게 문의하세요.'); }
 function validateHalfHour_(value) { if (!/^([01]\d|2[0-3]):(00|30)$/.test(String(value || ''))) throw new Error('시간은 30분 단위로 입력하세요.'); }
 function timeMinutes_(value) { const parts = String(value || '00:00').split(':').map(Number); return parts[0] * 60 + parts[1]; }
 function parseDateTime_(date, time) { const value = new Date(String(date) + 'T' + String(time).slice(0, 5) + ':00+09:00'); if (Number.isNaN(value.getTime())) throw new Error('날짜와 시간을 확인하세요.'); return value; }
 function isActive_(value) { return !(value === false || String(value).toUpperCase() === 'FALSE' || String(value).toUpperCase() === 'N' || String(value) === '0'); }
+function safeText_(value, maxLength) { return String(value || '').replace(/[<>]/g, '').trim().slice(0, maxLength); }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
 function spreadsheet_() { const configuredId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'); if (configuredId) return SpreadsheetApp.openById(configuredId); const active = SpreadsheetApp.getActiveSpreadsheet(); if (!active) throw new Error('SPREADSHEET_ID를 설정하거나 Spreadsheet에 스크립트를 연결하세요.'); return active; }
