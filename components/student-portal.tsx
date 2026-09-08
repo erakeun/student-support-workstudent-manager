@@ -59,7 +59,7 @@ const NAV: Array<{ id: StudentView; label: string; icon: typeof Home }> = [
   { id: 'attendance', label: '출퇴근', icon: Clock3 },
   { id: 'schedule', label: '내 시간표', icon: CalendarDays },
   { id: 'logs', label: '내 근무기록', icon: ScrollText },
-  { id: 'handovers', label: '인수인계', icon: BookOpenText },
+  { id: 'handovers', label: '공유메모', icon: BookOpenText },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
   { id: 'wiki', label: '담당업무', icon: BookOpenText },
   { id: 'profile', label: '내 정보', icon: UserRound },
@@ -102,10 +102,6 @@ export function StudentPortal({
         (log.date >= semester.startDate && log.date <= semester.endDate),
     )
     .reduce((sum, log) => sum + Number(log.minutes || 0), 0);
-  const next = data.schedules
-    .filter((s) => s.active !== false)
-    .sort((a, b) => Number(a.dayOfWeek) - Number(b.dayOfWeek))[0];
-
   const home = (
     <>
       <section className="student-hero rounded-[20px] bg-[#075b9b] p-6 text-white sm:p-8">
@@ -138,7 +134,6 @@ export function StudentPortal({
           <Summary label="이번 학기 누적" value={hoursText(semesterMinutes)} />
         </div>
       </section>
-      <Card className="mt-5 shadow-none"><CardHeader><CardTitle>최근 인수인계</CardTitle><CardDescription>공개되었거나 내 조직에 공유된 최근 업무입니다.</CardDescription></CardHeader><CardContent className="space-y-2">{(data.handovers || []).filter(row => row.status !== 'DONE').slice(0,3).map(row => <button key={row.handoverId} onClick={() => setView('handovers')} className="block w-full rounded-lg border bg-slate-50 p-3 text-left"><span className="text-xs text-slate-500">{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {row.date}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!(data.handovers || []).some(row => row.status !== 'DONE') && <Empty>최근 인수인계가 없습니다.</Empty>}</CardContent></Card>
       <section className="mt-5 grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
         <Card className="shadow-none">
           <CardHeader>
@@ -198,32 +193,15 @@ export function StudentPortal({
         </Card>
         <Card className="shadow-none">
           <CardHeader>
-            <CardTitle>다음 근무</CardTitle>
-            <CardDescription>현재 활성 학기 기준</CardDescription>
+            <CardTitle>이번 주 근무표</CardTitle>
+            <CardDescription>월–금 개인 일정</CardDescription>
           </CardHeader>
           <CardContent>
-            {next ? (
-              <>
-                <p className="text-2xl font-black">
-                  {DAYS[Number(next.dayOfWeek)]}요일
-                </p>
-                <p className="mt-1 font-mono text-sm">
-                  {next.startTime}–{next.endTime}
-                </p>
-                <Button
-                  className="mt-5 w-full"
-                  variant="outline"
-                  onClick={() => setView('schedule')}
-                >
-                  전체 시간표 보기
-                </Button>
-              </>
-            ) : (
-              <Empty>등록된 시간표가 없습니다.</Empty>
-            )}
+            <div className="space-y-2">{[1,2,3,4,5].map((day) => { const rows=data.schedules.filter(s => !s.date && s.active !== false && Number(s.dayOfWeek)===day); return <button key={day} onClick={() => setView('schedule')} className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm"><b>{DAYS[day]}</b><span className="font-mono text-xs text-slate-500">{rows.length ? rows.map(row => `${row.startTime}–${row.endTime}`).join(', ') : '근무 없음'}</span></button>; })}</div>
           </CardContent>
         </Card>
       </section>
+      <Card className="mt-5 shadow-none"><CardHeader><CardTitle>근무 공유메모</CardTitle><CardDescription>다음 근무자에게 전달된 최근 미처리 내용입니다.</CardDescription></CardHeader><CardContent className="space-y-2">{(data.handovers || []).filter(row => row.status !== 'DONE').sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned))).slice(0,3).map(row => <button key={row.handoverId} onClick={() => setView('handovers')} className="block w-full rounded-lg border bg-slate-50 p-3 text-left"><span className="text-xs text-slate-500">{row.pinned ? '고정 · ' : ''}{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {row.date}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!(data.handovers || []).some(row => row.status !== 'DONE') && <Empty>최근 공유메모가 없습니다.</Empty>}</CardContent></Card>
     </>
   );
 
@@ -335,7 +313,8 @@ function ScheduleView({ data }: { data: PortalData }) {
         (s) => (s.date ? s.date === date : Number(s.dayOfWeek) === day) && s.active !== false,
       ),
     };
-  }).filter((row) => row.day >= 1 && row.day <= 5 && row.schedules.length);
+  }).filter((row) => row.day >= 1 && row.day <= 5);
+  const leading = calendarRows.length ? Math.max(0, calendarRows[0].day - 1) : 0;
   return (
     <>
       <PageTitle
@@ -376,15 +355,7 @@ function ScheduleView({ data }: { data: PortalData }) {
             </CardContent>
           </Card>
         ))}
-      </div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {calendarRows.map((row) => (
-          <Card key={row.date} className="shadow-none">
-            <CardHeader className="pb-2"><CardTitle className="text-base">{row.date} · {DAYS[row.day]}요일</CardTitle></CardHeader>
-            <CardContent className="space-y-2">{row.schedules.map((schedule) => <div key={schedule.scheduleId} className="rounded-lg border bg-slate-50 p-3 font-mono text-sm font-bold">{schedule.startTime}–{schedule.endTime}</div>)}</CardContent>
-          </Card>
-        ))}
-        {!calendarRows.length && <Empty>선택한 달의 근무 일정이 없습니다.</Empty>}
-      </div>}
+      </div> : <Card className="overflow-auto shadow-none"><CardContent className="min-w-[650px] p-4"><div className="grid grid-cols-5 border-l border-t bg-white">{['월','화','수','목','금'].map((day) => <div key={day} className="border-b border-r bg-slate-50 p-2 text-center text-xs font-black text-slate-500">{day}</div>)}{Array.from({length:leading}).map((_,index) => <div key={`blank-${index}`} className="min-h-24 border-b border-r bg-slate-50/60" />)}{calendarRows.map((row) => <div key={row.date} className="min-h-24 border-b border-r p-2"><b className="text-xs text-slate-600">{Number(row.date.slice(-2))}일 {DAYS[row.day]}</b><div className="mt-2 space-y-1">{row.schedules.slice().sort((a,b) => a.startTime.localeCompare(b.startTime)).map((schedule) => <div key={schedule.scheduleId} className="rounded border bg-sky-50 px-2 py-1 font-mono text-xs font-bold text-sky-900">{schedule.startTime}–{schedule.endTime}</div>)}{!row.schedules.length && <span className="text-xs text-slate-300">근무 없음</span>}</div></div>)}</div></CardContent></Card>}
     </>
   );
 }
@@ -488,10 +459,10 @@ function HandoversView({ data, busy, onAction }: { data: PortalData; busy: boole
     event.preventDefault(); const form = event.currentTarget; const f = Object.fromEntries(new FormData(form));
     await onAction('studentUpsertHandover',{record:{...selected,...f,status:selected?.status || 'OPEN',priority:selected?.priority || 'NORMAL',visibility:f.visibility || 'PUBLIC'}}); setEditing(''); form.reset();
   };
-  const rows = (data.handovers || []).slice().sort((a,b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
-  return <><PageTitle eyebrow="HANDOVER" title="인수인계" description="새 내용을 남기고, 내가 작성한 인수인계를 수정하거나 완료할 수 있습니다." />
+  const rows = (data.handovers || []).slice().sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
+  return <><PageTitle eyebrow="SHARED NOTES" title="근무 공유메모·인수인계" description="다음 근무자에게 진행상황을 남기고, 공개 메모를 확인합니다." />
     <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]"><Card className="shadow-none"><CardHeader><CardTitle>{selected ? '내 인수인계 수정' : '새 인수인계 작성'}</CardTitle></CardHeader><CardContent><form key={selected?.handoverId || 'new'} onSubmit={submit} className="space-y-3"><label className="field-label">날짜<Input name="date" type="date" defaultValue={selected?.date || isoDate()} required /></label><label className="field-label">제목<Input name="title" maxLength={120} defaultValue={selected?.title || ''} required /></label><label className="field-label">내용<Input name="content" maxLength={2000} defaultValue={selected?.content || ''} required /></label><label className="field-label">공개범위<NativeSelect name="visibility" defaultValue={selected?.visibility || 'PUBLIC'}><NativeSelectOption value="PUBLIC">전체 공개</NativeSelectOption><NativeSelectOption value="PART">같은 조직</NativeSelectOption></NativeSelect></label><div className="flex gap-2"><Button type="submit" disabled={busy} className="flex-1">{selected ? '수정 저장' : '작성'}</Button>{selected && <Button type="button" variant="outline" onClick={() => setEditing('')}>취소</Button>}</div></form></CardContent></Card>
-    <div className="space-y-3">{rows.map(row => <Card key={row.handoverId} className={row.priority === 'IMPORTANT' ? 'border-amber-300 bg-amber-50/40 shadow-none' : 'shadow-none'}><CardHeader><div className="flex gap-2">{row.priority === 'IMPORTANT' && <Badge variant="destructive">중요</Badge>}<Badge variant="outline">{row.status}</Badge></div><CardTitle className="text-base">{row.title}</CardTitle><CardDescription>{row.date} · {partName(data,row.partId)}</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm text-slate-600">{row.content}</p>{row.authorStudentId === student.studentId && <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(row.handoverId)}>수정</Button>{row.status !== 'DONE' && <Button size="sm" onClick={() => void onAction('studentUpsertHandover',{record:{...row,status:'DONE'}}).catch(() => undefined)}>완료 표시</Button>}</div>}</CardContent></Card>)}{!rows.length && <Empty>공개된 인수인계가 없습니다.</Empty>}</div></div></>;
+    <div className="space-y-3">{rows.map(row => { const mine = row.authorStudentId === student.studentId; const acknowledged = String(row.acknowledgedBy || '').split(',').includes(student.studentId); return <Card key={row.handoverId} className={row.priority === 'IMPORTANT' ? 'border-amber-300 bg-amber-50/40 shadow-none' : 'shadow-none'}><CardHeader><div className="flex flex-wrap gap-2">{row.pinned && <Badge>공지 고정</Badge>}{row.priority === 'IMPORTANT' && <Badge variant="destructive">중요</Badge>}<Badge variant="outline">{row.status}</Badge>{acknowledged && <Badge variant="secondary">확인함</Badge>}</div><CardTitle className="text-base">{row.title}</CardTitle><CardDescription>{row.date} · {partName(data,row.partId)}</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm text-slate-600">{row.content}</p><div className="mt-4 flex flex-wrap gap-2">{!acknowledged && <Button size="sm" variant="secondary" disabled={busy} onClick={() => void onAction('studentAcknowledgeHandover',{handoverId:row.handoverId}).catch(() => undefined)}>확인</Button>}{mine && <><Button size="sm" variant="outline" onClick={() => setEditing(row.handoverId)}>수정</Button>{row.status !== 'DONE' && <Button size="sm" onClick={() => void onAction('studentUpsertHandover',{record:{...row,status:'DONE'}}).catch(() => undefined)}>완료 표시</Button>}<Button size="sm" variant="destructive" onClick={() => void onAction('studentDeleteHandover',{handoverId:row.handoverId}).catch(() => undefined)}>삭제</Button></>}</div></CardContent></Card>; })}{!rows.length && <Empty>공개된 인수인계가 없습니다.</Empty>}</div></div></>;
 }
 
 function WikiView({ data }: { data: PortalData }) {

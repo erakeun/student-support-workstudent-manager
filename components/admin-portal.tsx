@@ -66,6 +66,8 @@ import {
   shortTermState,
   studentName,
   todaySchedules,
+  workerTypeKey,
+  workerTypeName,
 } from './portal-ui';
 
 type AdminView =
@@ -107,7 +109,7 @@ const NAV: Array<{
   { id: 'schedules', label: '시간표 편집', icon: CalendarDays },
   { id: 'logs', label: '근무기록 관리', icon: ClipboardCheck },
   { id: 'substitutions', label: '대체근무', icon: Repeat2 },
-  { id: 'handovers', label: '인수인계', icon: BookOpenText },
+  { id: 'handovers', label: '공유메모', icon: BookOpenText },
   { id: 'tasks', label: '담당업무', icon: BookOpenText },
   { id: 'budget', label: '예산', icon: WalletCards },
   { id: 'semesters', label: '학기 관리', icon: Database },
@@ -270,6 +272,13 @@ function Dashboard({
   const warnings = data.workLogs.filter((l) => l.flagCode);
   const expiring = data.students.filter((s) => Boolean(shortTermState(s)));
   const openHandovers = (data.handovers || []).filter(row => row.status !== 'DONE');
+  const dashboardBudget = (data.budgets || []).find(row => row.month === monthKey());
+  const budgetLabels = [
+    ['전체', dashboardBudget?.totalBudget],
+    ['국가근로', dashboardBudget?.nationalBudget],
+    ['교내근로', dashboardBudget?.internalBudget],
+    ['단기근로', dashboardBudget?.shortTermBudget],
+  ] as const;
   return (
     <>
       <PageTitle
@@ -277,6 +286,15 @@ function Dashboard({
         title="지원팀·예비군연대 운영 대시보드"
         description="현재·다음 근무와 확인 필요한 기록을 한 화면에서 봅니다."
       />
+      <Card className="mb-4 shadow-none">
+        <CardHeader>
+          <CardTitle>오늘 근무 현황</CardTitle>
+          <CardDescription>통합 사무실 전체 일정과 출퇴근 상태</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ShiftTable data={data} rows={today} />
+        </CardContent>
+      </Card>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <Metric label="오늘 예정" value={`${today.length}건`} />
         <Metric label="현재 근무중" value={`${working.length}명`} tone="blue" />
@@ -369,17 +387,10 @@ function Dashboard({
           </CardContent>
         </Card>
       </div>
-      <TaskSearch data={data} />
       <div className="mt-4 grid gap-4 lg:grid-cols-2"><Card className="shadow-none"><CardHeader><CardTitle>이번 주 스케줄</CardTitle><CardDescription>월–금 정규 일정 요약</CardDescription></CardHeader><CardContent className="grid grid-cols-5 gap-2">{[1,2,3,4,5].map(day => <button key={day} onClick={() => setView('week')} className="rounded-lg border bg-slate-50 p-3 text-center"><b className="text-sm">{DAYS[day]}</b><span className="mt-1 block text-lg font-black">{data.schedules.filter(row => row.active !== false && !row.date && Number(row.dayOfWeek) === day).length}</span><small className="text-slate-400">구간</small></button>)}</CardContent></Card><Card className="shadow-none"><CardHeader><CardTitle>이번 달 스케줄</CardTitle><CardDescription>{monthKey()} 실제 달력 기준</CardDescription></CardHeader><CardContent><p className="text-3xl font-black">{monthlyScheduleCount(data, monthKey())}건</p><p className="mt-2 text-sm text-slate-500">날짜 지정 일정과 정규 반복 일정을 함께 집계합니다.</p><Button variant="outline" className="mt-4" onClick={() => setView('week')}>월간 시간표 열기</Button></CardContent></Card></div>
-      <Card className="mt-4 shadow-none"><CardHeader><CardTitle>최근 인수인계</CardTitle></CardHeader><CardContent className="grid gap-2 md:grid-cols-2">{openHandovers.slice(0,4).map(row => <button key={row.handoverId} className="rounded-lg border bg-slate-50 p-3 text-left" onClick={() => setView('handovers')}><span className="text-xs text-slate-500">{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {studentName(data,row.authorStudentId)}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!openHandovers.length && <Empty>미완료 인수인계가 없습니다.</Empty>}</CardContent></Card>
-      <Card className="mt-4 shadow-none">
-        <CardHeader>
-          <CardTitle>오늘 전체 일정</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ShiftTable data={data} rows={today} />
-        </CardContent>
-      </Card>
+      <Card className="mt-4 shadow-none"><CardHeader><CardTitle>공유메모·인수인계</CardTitle><CardDescription>고정·중요·미처리 순으로 최근 내용을 확인합니다.</CardDescription></CardHeader><CardContent className="grid gap-2 md:grid-cols-2">{openHandovers.slice().sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || Number(b.priority === 'IMPORTANT')-Number(a.priority === 'IMPORTANT')).slice(0,4).map(row => <button key={row.handoverId} className="rounded-lg border bg-slate-50 p-3 text-left" onClick={() => setView('handovers')}><span className="text-xs text-slate-500">{row.pinned ? '고정 · ' : ''}{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {studentName(data,row.authorStudentId)}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!openHandovers.length && <Empty>미완료 공유메모가 없습니다.</Empty>}</CardContent></Card>
+      <Card className="mt-4 shadow-none"><CardHeader><CardTitle>확인 필요 근태·예산</CardTitle><CardDescription>{monthKey()} 운영 점검</CardDescription></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{budgetLabels.map(([label,value]) => { const configured=value !== '' && value !== undefined && value !== null; return <button key={label} onClick={() => setView('budget')} className="rounded-lg border p-3 text-left"><span className="text-xs text-slate-500">{label} 예산</span><b className="mt-1 block text-sm">{configured ? `${Number(value).toLocaleString()}원` : '예산 미설정'}</b></button>; })}<button onClick={() => setView('logs')} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-left"><span className="text-xs text-amber-700">근태 확인 필요</span><b className="mt-1 block text-sm">{warnings.length}건</b></button></CardContent></Card>
+      <TaskSearch data={data} />
     </>
   );
 }
@@ -554,7 +565,7 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
         (st) =>
           st.studentId === s.studentId &&
           (part === 'all' || st.partId === part) &&
-          (workerType === 'all' || st.workerType === workerType) &&
+          (workerType === 'all' || workerTypeKey(st.workerType) === workerType) &&
           (student === 'all' || st.studentId === student),
       ),
   );
@@ -564,7 +575,7 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
     const date = `${month}-${String(index + 1).padStart(2, '0')}`;
     const day = new Date(`${date}T12:00:00+09:00`).getDay();
     return { date, day, rows: rows.filter((schedule) => schedule.date ? schedule.date === date : Number(schedule.dayOfWeek) === day) };
-  });
+  }).filter((item) => item.day >= 1 && item.day <= 5);
   return (
     <>
       <PageTitle
@@ -576,7 +587,7 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
             <Button variant={mode === 'week' ? 'default' : 'outline'} onClick={() => setMode('week')}>주간</Button>
             <Button variant={mode === 'month' ? 'default' : 'outline'} onClick={() => setMode('month')}>월간</Button>
             <NativeSelect value={part} onChange={(e) => setPart(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 파트</NativeSelectOption>{data.parts.map((p) => <NativeSelectOption key={p.partId} value={p.partId}>{p.partName}</NativeSelectOption>)}</NativeSelect>
-            <NativeSelect value={workerType} onChange={(e) => setWorkerType(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 근로유형</NativeSelectOption><NativeSelectOption value="NATIONAL_WORK">국가근로</NativeSelectOption><NativeSelectOption value="SHORT_TERM">단기근로</NativeSelectOption><NativeSelectOption value="OTHER">기타</NativeSelectOption></NativeSelect>
+            <NativeSelect value={workerType} onChange={(e) => setWorkerType(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 근로유형</NativeSelectOption><NativeSelectOption value="NATIONAL_WORK">국가근로</NativeSelectOption><NativeSelectOption value="INTERNAL_WORK">교내근로</NativeSelectOption><NativeSelectOption value="SHORT_TERM">단기근로</NativeSelectOption></NativeSelect>
             <NativeSelect value={student} onChange={(e) => setStudent(e.target.value)} className="w-44 bg-white"><NativeSelectOption value="all">전체 학생</NativeSelectOption>{data.students.filter((item) => part === 'all' || item.partId === part).map((item) => <NativeSelectOption key={item.studentId} value={item.studentId}>{item.name}</NativeSelectOption>)}</NativeSelect>
           </div>
         }
@@ -639,8 +650,8 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
 }
 
 function MonthCalendar({ data, items, edit }: { data: PortalData; items: Array<{ date: string; day: number; rows: Schedule[] }>; edit: (e: Editor) => void }) {
-  const leading = items.length ? new Date(`${items[0].date}T12:00:00+09:00`).getDay() : 0;
-  return <Card className="overflow-auto shadow-none"><CardContent className="min-w-[900px] p-4"><div className="grid grid-cols-7 border-l border-t bg-white">{['일','월','화','수','목','금','토'].map(day => <div key={day} className="border-b border-r p-2 text-center text-xs font-black text-slate-500">{day}</div>)}{Array.from({length: leading}).map((_, index) => <div key={`blank-${index}`} className="min-h-28 border-b border-r bg-slate-50" />)}{items.map(item => <div key={item.date} className="min-h-28 border-b border-r p-2"><b className="text-xs">{Number(item.date.slice(-2))}</b><div className="mt-2 space-y-1">{item.rows.map(schedule => { const student = data.students.find(row => row.studentId === schedule.studentId); return <button key={`${item.date}-${schedule.scheduleId}`} onClick={() => edit({kind:'schedule', record: schedule as unknown as Record<string, unknown>})} className={`block w-full rounded border px-2 py-1 text-left text-[11px] ${PART_TONES[student?.partId || '']}`}><b>{student?.name}</b><span className="block">{partName(data, student?.partId || '')} · {schedule.startTime}–{schedule.endTime}</span></button>; })}</div></div>)}</div></CardContent></Card>;
+  const leading = items.length ? Math.max(0, items[0].day - 1) : 0;
+  return <Card className="overflow-auto shadow-none"><CardContent className="min-w-[760px] p-4"><div className="grid grid-cols-5 border-l border-t bg-white">{['월','화','수','목','금'].map(day => <div key={day} className="border-b border-r bg-slate-50 p-2 text-center text-xs font-black text-slate-500">{day}</div>)}{Array.from({length: leading}).map((_, index) => <div key={`blank-${index}`} className="min-h-28 border-b border-r bg-slate-50/60" />)}{items.map(item => { const groups = item.rows.slice().sort((a,b) => minutes(a.startTime)-minutes(b.startTime)).reduce<Record<string, Schedule[]>>((acc,row) => { (acc[row.startTime] ||= []).push(row); return acc; }, {}); return <div key={item.date} className="min-h-28 border-b border-r p-2"><b className="text-xs text-slate-600">{Number(item.date.slice(-2))}일 {DAYS[item.day]}</b><div className="mt-2 space-y-1.5">{Object.entries(groups).map(([time, schedules]) => <div key={time} className="flex items-start gap-1.5 text-xs"><span className="w-10 shrink-0 font-mono font-bold text-slate-500">{time}</span><div className="flex flex-wrap gap-1">{schedules.map(schedule => { const student = data.students.find(row => row.studentId === schedule.studentId); return <button key={`${item.date}-${schedule.scheduleId}`} onClick={() => edit({kind:'schedule', record: schedule as unknown as Record<string, unknown>})} className={`rounded border px-1.5 py-0.5 font-bold ${PART_TONES[student?.partId || '']}`} title={`${partName(data, student?.partId || '')} · ${workerTypeName(student?.workerType)} · ${schedule.startTime}–${schedule.endTime}`}>{student?.name}</button>; })}</div></div>)}</div></div>; })}</div></CardContent></Card>;
 }
 
 function Students({
@@ -699,7 +710,7 @@ function Students({
                   {Number(s.hourlyWage || 0) ? `${Number(s.hourlyWage).toLocaleString()}원` : '미입력'}
                 </TableCell>
                 <TableCell>
-                  {s.workerType}
+                  {workerTypeName(s.workerType)}
                   {shortTermState(s) && (
                     <Badge variant="destructive" className="ml-2">
                       {shortTermState(s)}
@@ -1264,10 +1275,10 @@ function Substitutions({
 
 function Handovers({ data, edit, onAction }: { data: PortalData; edit: (e: Editor) => void; onAction: (a: string, p?: Record<string, unknown>) => Promise<void> }) {
   const [status, setStatus] = useState('all');
-  const rows = (data.handovers || []).filter(row => status === 'all' || row.status === status).sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
-  return <><PageTitle eyebrow="HANDOVER" title="인수인계 관리" description="학생 공개 인수인계와 관리자 공지를 함께 관리합니다." action={<Button onClick={() => edit({kind:'handover'})}><Plus />인수인계 등록</Button>} />
+  const rows = (data.handovers || []).filter(row => status === 'all' || row.status === status).sort((a, b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || Number(b.priority === 'IMPORTANT')-Number(a.priority === 'IMPORTANT') || String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)));
+  return <><PageTitle eyebrow="SHARED NOTES" title="근무 공유메모·인수인계 관리" description="담당업무와 분리된 시점별 진행상황입니다. 학생 메모와 관리자 공지를 함께 관리합니다." action={<Button onClick={() => edit({kind:'handover'})}><Plus />공유메모 등록</Button>} />
     <NativeSelect value={status} onChange={event => setStatus(event.target.value)} className="mb-4 w-44 bg-white"><NativeSelectOption value="all">전체 상태</NativeSelectOption><NativeSelectOption value="OPEN">미처리</NativeSelectOption><NativeSelectOption value="IN_PROGRESS">처리중</NativeSelectOption><NativeSelectOption value="DONE">완료</NativeSelectOption></NativeSelect>
-    <div className="grid gap-3 lg:grid-cols-2">{rows.map(row => <Card key={row.handoverId} className={row.priority === 'IMPORTANT' ? 'border-amber-300 bg-amber-50/40 shadow-none' : 'shadow-none'}><CardHeader><div className="flex items-center gap-2">{row.priority === 'IMPORTANT' && <Badge variant="destructive">중요</Badge>}<Badge variant="outline">{row.status}</Badge></div><CardTitle className="text-base">{row.title}</CardTitle><CardDescription>{row.date} · {partName(data,row.partId)} · {row.authorStudentId ? studentName(data,row.authorStudentId) : '관리자 공지'}</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm text-slate-600">{row.content}</p><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit({kind:'handover',record:row as unknown as Record<string, unknown>})}>수정</Button>{row.status !== 'DONE' && <Button size="sm" onClick={() => void onAction('adminUpsertHandover',{record:{...row,status:'DONE'}}).catch(() => undefined)}>완료</Button>}<Button size="sm" variant="destructive" onClick={() => void onAction('adminDeleteHandover',{handoverId:row.handoverId}).catch(() => undefined)}>삭제</Button></div></CardContent></Card>)}{!rows.length && <Empty>인수인계가 없습니다.</Empty>}</div></>;
+    <div className="grid gap-3 lg:grid-cols-2">{rows.map(row => <Card key={row.handoverId} className={row.priority === 'IMPORTANT' ? 'border-amber-300 bg-amber-50/40 shadow-none' : 'shadow-none'}><CardHeader><div className="flex flex-wrap items-center gap-2">{row.pinned && <Badge>공지 고정</Badge>}{row.priority === 'IMPORTANT' && <Badge variant="destructive">중요</Badge>}<Badge variant="outline">{row.status}</Badge></div><CardTitle className="text-base">{row.title}</CardTitle><CardDescription>{row.date} · {partName(data,row.partId)} · {row.authorStudentId ? studentName(data,row.authorStudentId) : '관리자 공지'} · 확인 {String(row.acknowledgedBy || '').split(',').filter(Boolean).length}명</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm text-slate-600">{row.content}</p><div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => edit({kind:'handover',record:row as unknown as Record<string, unknown>})}>수정</Button>{row.status !== 'DONE' && <Button size="sm" onClick={() => void onAction('adminUpsertHandover',{record:{...row,status:'DONE'}}).catch(() => undefined)}>완료</Button>}<Button size="sm" variant="destructive" onClick={() => void onAction('adminDeleteHandover',{handoverId:row.handoverId}).catch(() => undefined)}>삭제</Button></div></CardContent></Card>)}{!rows.length && <Empty>공유메모가 없습니다.</Empty>}</div></>;
 }
 
 function Budget({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
@@ -1301,18 +1312,25 @@ function Budget({ data, edit }: { data: PortalData; edit: (e: Editor) => void })
     return { student, scheduledMinutes, actualMinutes, wage: wage.wage, wageSource: wage.source, scheduledCost: Math.round(scheduledMinutes / 60 * wage.wage), actualCost: Math.round(actualMinutes / 60 * wage.wage) };
   });
   const total = rows.reduce((sum, row) => ({ scheduledMinutes: sum.scheduledMinutes + row.scheduledMinutes, actualMinutes: sum.actualMinutes + row.actualMinutes, scheduledCost: sum.scheduledCost + row.scheduledCost, actualCost: sum.actualCost + row.actualCost }), { scheduledMinutes: 0, actualMinutes: 0, scheduledCost: 0, actualCost: 0 });
-  const saved = (data.budgets || []).find(item => item.month === month) || {month,totalBudget:0,supportBudget:0,reserveBudget:0,shortTermBudget:0,note:''};
-  const cards = [{id:'TOTAL',name:'전체',budget:Number(saved.totalBudget||0),items:rows},{id:'SUPPORT',name:'지원팀',budget:Number(saved.supportBudget||0),items:rows.filter(row=>row.student.partId==='SUPPORT')},{id:'RESERVE',name:'예비군연대',budget:Number(saved.reserveBudget||0),items:rows.filter(row=>row.student.partId==='RESERVE')}];
+  const saved = (data.budgets || []).find(item => item.month === month) || {month,totalBudget:'',nationalBudget:'',internalBudget:'',shortTermBudget:'',note:''};
+  const cards = [
+    {id:'TOTAL',name:'전체',budget:saved.totalBudget,items:rows},
+    {id:'NATIONAL_WORK',name:'국가근로',budget:saved.nationalBudget,items:rows.filter(row=>workerTypeKey(row.student.workerType)==='NATIONAL_WORK')},
+    {id:'INTERNAL_WORK',name:'교내근로',budget:saved.internalBudget,items:rows.filter(row=>workerTypeKey(row.student.workerType)==='INTERNAL_WORK')},
+    {id:'SHORT_TERM',name:'단기근로',budget:saved.shortTermBudget,items:rows.filter(row=>workerTypeKey(row.student.workerType)==='SHORT_TERM')},
+  ];
+  const isConfigured = (value: number | string | undefined) => value !== '' && value !== undefined && value !== null;
   return <>
-    <PageTitle eyebrow="BUDGET" title="월별 근로 예산" description="선택 월의 실제 날짜와 완료 근무기록으로 예정·실제 인건비와 잔여 예산을 계산합니다." action={<div className="flex gap-2"><Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44 bg-white" /><Button onClick={() => edit({kind:'budget',record:saved as unknown as Record<string, unknown>})}>예산 설정</Button></div>} />
+    <PageTitle eyebrow="BUDGET" title="월별 근로유형 예산" description="소속과 분리된 기존 근로유형으로 국가근로·교내근로 비용을 집계합니다." action={<div className="flex flex-wrap gap-2"><Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44 bg-white" /><Button onClick={() => edit({kind:'budget',record:saved as unknown as Record<string, unknown>})}>예산 입력·수정</Button></div>} />
     <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="예정 근로시간" value={hoursText(total.scheduledMinutes)} />
       <Metric label="예정 인건비" value={`${total.scheduledCost.toLocaleString()}원`} />
       <Metric label="실제 완료시간" value={hoursText(total.actualMinutes)} />
       <Metric label="실제 인건비" value={`${total.actualCost.toLocaleString()}원`} />
     </div>
-    <div className="mb-4 grid gap-3 md:grid-cols-3">{cards.map(card => { const planned=card.items.reduce((sum,row)=>sum+row.scheduledCost,0); const actual=card.items.reduce((sum,row)=>sum+row.actualCost,0); return <Card key={card.id} className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{card.name}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-2 text-sm"><p>설정 예산<br/><b>{card.budget.toLocaleString()}원</b></p><p>예정 인건비<br/><b>{planned.toLocaleString()}원</b></p><p>실제 잔여<br/><b>{(card.budget-actual).toLocaleString()}원</b></p><p>예정 잔여<br/><b>{(card.budget-planned).toLocaleString()}원</b></p></CardContent></Card>; })}</div>
-    <Card className="overflow-auto shadow-none"><Table><TableHeader><TableRow><TableHead>학생</TableHead><TableHead>파트</TableHead><TableHead>적용 시급</TableHead><TableHead>예정 시간/비용</TableHead><TableHead>실제 시간/비용</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.student.studentId} className={!row.wage ? 'bg-amber-50' : ''}><TableCell className="font-bold">{row.student.name}</TableCell><TableCell>{partName(data, row.student.partId)}</TableCell><TableCell>{row.wage ? `${row.wage.toLocaleString()}원 · ${row.wageSource}` : <Badge variant="destructive">시급 확인 필요</Badge>}</TableCell><TableCell>{hoursText(row.scheduledMinutes)} · {row.scheduledCost.toLocaleString()}원</TableCell><TableCell>{hoursText(row.actualMinutes)} · {row.actualCost.toLocaleString()}원</TableCell></TableRow>)}</TableBody></Table></Card>
+    <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{cards.map(card => { const planned=card.items.reduce((sum,row)=>sum+row.scheduledCost,0); const actual=card.items.reduce((sum,row)=>sum+row.actualCost,0); const configured=isConfigured(card.budget); const amount=Number(card.budget || 0); return <Card key={card.id} className="shadow-none"><CardHeader className="pb-2"><CardTitle className="text-base">{card.name}</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm"><p className="col-span-2">설정 예산<br/>{configured ? <b className="text-lg">{amount.toLocaleString()}원</b> : <Badge variant="secondary" className="mt-1">예산 미설정</Badge>}</p><p>예정 인건비<br/><b>{planned.toLocaleString()}원</b></p><p>실제 인건비<br/><b>{actual.toLocaleString()}원</b></p><p>예정 잔여<br/><b>{configured ? `${(amount-planned).toLocaleString()}원` : '—'}</b></p><p>실제 잔여<br/><b>{configured ? `${(amount-actual).toLocaleString()}원` : '—'}</b></p></CardContent></Card>; })}</div>
+    {saved.note && <p className="mb-4 rounded-lg border bg-white px-4 py-3 text-sm text-slate-600">예산 메모 · {saved.note}</p>}
+    <Card className="overflow-auto shadow-none"><Table><TableHeader><TableRow><TableHead>학생</TableHead><TableHead>소속</TableHead><TableHead>근로유형</TableHead><TableHead>적용 시급</TableHead><TableHead>예정 시간/비용</TableHead><TableHead>실제 시간/비용</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.student.studentId} className={!row.wage ? 'bg-amber-50' : ''}><TableCell className="font-bold">{row.student.name}</TableCell><TableCell>{partName(data, row.student.partId)}</TableCell><TableCell>{workerTypeName(row.student.workerType)}</TableCell><TableCell>{row.wage ? `${row.wage.toLocaleString()}원 · ${row.wageSource}` : <Badge variant="destructive">시급 확인 필요</Badge>}</TableCell><TableCell>{hoursText(row.scheduledMinutes)} · {row.scheduledCost.toLocaleString()}원</TableCell><TableCell>{hoursText(row.actualMinutes)} · {row.actualCost.toLocaleString()}원</TableCell></TableRow>)}</TableBody></Table></Card>
   </>;
 }
 
@@ -1611,8 +1629,8 @@ function StudentFields({
           <NativeSelectOption value="NATIONAL_WORK">
             국가근로
           </NativeSelectOption>
+          <NativeSelectOption value="OTHER">교내근로</NativeSelectOption>
           <NativeSelectOption value="SHORT_TERM">단기근로</NativeSelectOption>
-          <NativeSelectOption value="OTHER">기타</NativeSelectOption>
         </NativeSelect>
       </label>
       <label className="field-label">
@@ -1844,9 +1862,9 @@ function TaskFields({
 }
 
 function BudgetFields({ r }: { r: Record<string, unknown> }) {
-  return <><label className="field-label">월<Input name="month" type="month" defaultValue={String(r.month || monthKey())} required /></label><span/><label className="field-label">전체 월 예산<Input name="totalBudget" type="number" min="0" step="1000" defaultValue={String(r.totalBudget || 0)} /></label><label className="field-label">지원팀 예산<Input name="supportBudget" type="number" min="0" step="1000" defaultValue={String(r.supportBudget || 0)} /></label><label className="field-label">예비군연대 예산<Input name="reserveBudget" type="number" min="0" step="1000" defaultValue={String(r.reserveBudget || 0)} /></label><label className="field-label">단기근로 별도 예산<Input name="shortTermBudget" type="number" min="0" step="1000" defaultValue={String(r.shortTermBudget || 0)} /></label><label className="field-label sm:col-span-2">메모<Input name="note" defaultValue={String(r.note || '')} /></label></>;
+  return <><label className="field-label">월<Input name="month" type="month" defaultValue={String(r.month || monthKey())} required /></label><span/><label className="field-label">전체 설정 예산<Input name="totalBudget" type="number" min="0" step="1000" defaultValue={String(r.totalBudget ?? '')} placeholder="미입력 시 미설정" /></label><label className="field-label">국가근로 설정 예산<Input name="nationalBudget" type="number" min="0" step="1000" defaultValue={String(r.nationalBudget ?? '')} placeholder="미입력 시 미설정" /></label><label className="field-label">교내근로 설정 예산<Input name="internalBudget" type="number" min="0" step="1000" defaultValue={String(r.internalBudget ?? '')} placeholder="미입력 시 미설정" /></label><label className="field-label">단기근로 예산(선택)<Input name="shortTermBudget" type="number" min="0" step="1000" defaultValue={String(r.shortTermBudget ?? '')} placeholder="미입력 시 미설정" /></label><label className="field-label sm:col-span-2">메모<Input name="note" defaultValue={String(r.note || '')} /></label></>;
 }
 
 function HandoverFields({ data, r }: { data: PortalData; r: Record<string, unknown> }) {
-  return <><label className="field-label">날짜<Input name="date" type="date" defaultValue={String(r.date || isoDate())} required /></label><label className="field-label">조직<NativeSelect name="partId" defaultValue={String(r.partId || data.parts[0]?.partId)}>{data.parts.map(part => <NativeSelectOption key={part.partId} value={part.partId}>{part.partName}</NativeSelectOption>)}</NativeSelect></label><label className="field-label">작성 학생<NativeSelect name="authorStudentId" defaultValue={String(r.authorStudentId || '')}><NativeSelectOption value="">관리자 공지</NativeSelectOption>{data.students.map(student => <NativeSelectOption key={student.studentId} value={student.studentId}>{student.name}</NativeSelectOption>)}</NativeSelect></label><label className="field-label">대상 학생<NativeSelect name="targetStudentId" defaultValue={String(r.targetStudentId || '')}><NativeSelectOption value="">전체</NativeSelectOption>{data.students.filter(student => !r.partId || student.partId === r.partId).map(student => <NativeSelectOption key={student.studentId} value={student.studentId}>{student.name}</NativeSelectOption>)}</NativeSelect></label><label className="field-label sm:col-span-2">제목<Input name="title" maxLength={120} defaultValue={String(r.title || '')} required /></label><label className="field-label sm:col-span-2">내용<Input name="content" maxLength={2000} defaultValue={String(r.content || '')} required /></label><label className="field-label">상태<NativeSelect name="status" defaultValue={String(r.status || 'OPEN')}><NativeSelectOption value="OPEN">미처리</NativeSelectOption><NativeSelectOption value="IN_PROGRESS">처리중</NativeSelectOption><NativeSelectOption value="DONE">완료</NativeSelectOption></NativeSelect></label><label className="field-label">중요도<NativeSelect name="priority" defaultValue={String(r.priority || 'NORMAL')}><NativeSelectOption value="NORMAL">일반</NativeSelectOption><NativeSelectOption value="IMPORTANT">중요</NativeSelectOption></NativeSelect></label><label className="field-label">공개범위<NativeSelect name="visibility" defaultValue={String(r.visibility || 'PUBLIC')}><NativeSelectOption value="PUBLIC">전체 공개</NativeSelectOption><NativeSelectOption value="PART">같은 조직</NativeSelectOption></NativeSelect></label></>;
+  return <><label className="field-label">날짜<Input name="date" type="date" defaultValue={String(r.date || isoDate())} required /></label><label className="field-label">조직<NativeSelect name="partId" defaultValue={String(r.partId || data.parts[0]?.partId)}>{data.parts.map(part => <NativeSelectOption key={part.partId} value={part.partId}>{part.partName}</NativeSelectOption>)}</NativeSelect></label><label className="field-label">작성 학생<NativeSelect name="authorStudentId" defaultValue={String(r.authorStudentId || '')}><NativeSelectOption value="">관리자 공지</NativeSelectOption>{data.students.map(student => <NativeSelectOption key={student.studentId} value={student.studentId}>{student.name}</NativeSelectOption>)}</NativeSelect></label><label className="field-label">대상 학생<NativeSelect name="targetStudentId" defaultValue={String(r.targetStudentId || '')}><NativeSelectOption value="">전체</NativeSelectOption>{data.students.filter(student => !r.partId || student.partId === r.partId).map(student => <NativeSelectOption key={student.studentId} value={student.studentId}>{student.name}</NativeSelectOption>)}</NativeSelect></label><label className="field-label sm:col-span-2">제목<Input name="title" maxLength={120} defaultValue={String(r.title || '')} required /></label><label className="field-label sm:col-span-2">내용<Input name="content" maxLength={2000} defaultValue={String(r.content || '')} required /></label><label className="field-label">상태<NativeSelect name="status" defaultValue={String(r.status || 'OPEN')}><NativeSelectOption value="OPEN">미처리</NativeSelectOption><NativeSelectOption value="IN_PROGRESS">처리중</NativeSelectOption><NativeSelectOption value="DONE">완료</NativeSelectOption></NativeSelect></label><label className="field-label">중요도<NativeSelect name="priority" defaultValue={String(r.priority || 'NORMAL')}><NativeSelectOption value="NORMAL">일반</NativeSelectOption><NativeSelectOption value="IMPORTANT">중요</NativeSelectOption></NativeSelect></label><label className="field-label">공지 고정<NativeSelect name="pinned" defaultValue={String(r.pinned === true || String(r.pinned).toUpperCase() === 'TRUE')}><NativeSelectOption value="false">고정 안 함</NativeSelectOption><NativeSelectOption value="true">상단 고정</NativeSelectOption></NativeSelect></label><label className="field-label">공개범위<NativeSelect name="visibility" defaultValue={String(r.visibility || 'PUBLIC')}><NativeSelectOption value="PUBLIC">전체 공개</NativeSelectOption><NativeSelectOption value="PART">같은 조직</NativeSelectOption></NativeSelect></label></>;
 }

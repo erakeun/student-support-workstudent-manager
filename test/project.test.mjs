@@ -18,7 +18,7 @@ test('런타임 설정에는 공개 API URL만 있고 인증정보와 실제 학
   assert.doesNotMatch(demo, /stu-2026-/);
 });
 
-test('V4 Apps Script는 기존 테이블과 예산·인수인계를 비파괴적으로 보장한다', () => {
+test('V5 Apps Script는 기존 테이블과 예산·공유메모를 비파괴적으로 보장한다', () => {
   const source = backend();
   for (const table of [
     'Parts',
@@ -85,12 +85,14 @@ test('학생 연락처·개별시급과 파트·근로유형 기본 시급 구�
   assert.match(source, /delete copy\.passwordHash/);
 });
 
-test('V4 조직·기본 시급·예산·인수인계 구조를 제공한다', () => {
+test('V5 조직·기본 시급·근로유형 예산·공유메모 구조를 제공한다', () => {
   const source = backend();
-  for (const marker of ['SUPPORT', 'RESERVE', 'defaultHourlyWage', '10320', 'adminUpsertBudget_', 'studentUpsertHandover_', 'adminDeleteHandover_', 'migrateOrganizationV4_']) assert.match(source, new RegExp(marker));
+  for (const marker of ['SUPPORT', 'RESERVE', 'defaultHourlyWage', '10320', 'nationalBudget', 'internalBudget', 'adminUpsertBudget_', 'studentUpsertHandover_', 'studentDeleteHandover_', 'studentAcknowledgeHandover_', 'adminDeleteHandover_', 'migrateWorkerTypeBudgetsV5_']) assert.match(source, new RegExp(marker));
   assert.match(source, /'student-support': 'SUPPORT'/);
   assert.match(source, /'chinese-support': 'SUPPORT'/);
   assert.match(source, /'reserve-affairs': 'RESERVE'/);
+  assert.match(source, /본인이 작성한 공유메모만 삭제/);
+  assert.doesNotMatch(source, /record\[key\] = Math\.max\(0, Number\(record\[key\] \|\| 0\)\)/);
 });
 
 test('대체근무는 신청과 승인 두 단계에서 같은 파트만 허용한다', () => {
@@ -146,7 +148,7 @@ test('로그인 후 학생·관리자 전용 포털과 운영 CRUD가 연결된�
   assert.match(student, /studentUpdateContact/);
   assert.match(student, /출퇴근/);
   assert.match(student, /내 정보/);
-  assert.match(admin, /월별 근로 예산/);
+  assert.match(admin, /월별 근로유형 예산/);
   assert.match(admin, /actualCost/);
   assert.match(admin, /countScheduledMinutes/);
   for (const action of [
@@ -169,11 +171,17 @@ test('관리자와 학생 화면에 인수인계·예산 설정·월간 달력 �
   const student = read('components/student-portal.tsx');
   const admin = read('components/admin-portal.tsx');
   assert.match(student, /studentUpsertHandover/);
+  assert.match(student, /studentDeleteHandover/);
+  assert.match(student, /studentAcknowledgeHandover/);
   assert.match(student, /인수인계/);
   assert.match(admin, /MonthCalendar/);
-  assert.match(admin, /예산 설정/);
+  assert.match(admin, /국가근로 설정 예산/);
+  assert.match(admin, /교내근로 설정 예산/);
+  assert.match(admin, /예산 미설정/);
   assert.match(admin, /adminCancelWorkLog/);
   assert.match(admin, /전체 근로유형/);
+  assert.match(admin, /grid-cols-5/);
+  assert.doesNotMatch(admin, /\{\['일','월','화','수','목','금','토'\]/);
 });
 
 test('GitHub Pages와 Sites 정적 배포 설정을 계속 사용한다', () => {

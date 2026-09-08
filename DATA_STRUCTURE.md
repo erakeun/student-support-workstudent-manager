@@ -15,8 +15,8 @@
 | Substitutions | 대체근무 요청·신청·승인 | 요청자·대체자·요청의 `partId` 일치 필수 |
 | MigrationLog | 비파괴 마이그레이션 증거 | 전·후 학생·시간표 행 수 기록 |
 | Admins | 일반 관리자 계정 | 로그인 ID와 salt 해시, 활성 상태 |
-| Budgets | 월·조직별 예산 | 전체·지원팀·예비군연대·단기근로 예산과 감사 필드 |
-| Handovers | 학생·관리자 인수인계 | 공개범위·상태·중요도·완료일, 소프트 삭제 |
+| Budgets | 월·근로유형별 예산 | 전체·국가근로·교내근로·단기근로 예산과 감사 필드 |
+| Handovers | 학생·관리자 공유메모 | 공개범위·상태·중요도·고정·확인, 소프트 삭제 |
 
 ## 컬럼
 
@@ -31,12 +31,12 @@
 - `Substitutions`: substitutionId, scheduleId, date, requesterStudentId, substituteStudentId, partId, status, reason, createdAt, updatedAt, approvedBy
 - `MigrationLog`: migrationId, appliedAt, version, description, beforeStudents, afterStudents, beforeSchedules, afterSchedules
 - `Admins`: adminId, name, loginId, passwordHash, passwordSalt, active, lastPasswordChangedAt, createdAt, createdBy
-- `Budgets`: month, totalBudget, supportBudget, reserveBudget, shortTermBudget, note, updatedAt, updatedBy
-- `Handovers`: handoverId, date, partId, authorStudentId, title, content, status, priority, targetStudentId, createdAt, updatedAt, completedAt, visibility, active, deletedAt, deletedBy
+- `Budgets`: month, totalBudget, supportBudget, reserveBudget, shortTermBudget, note, updatedAt, updatedBy, nationalBudget, internalBudget. `supportBudget`·`reserveBudget`은 V4 호환용 보존 열이며 V5 계산에는 사용하지 않습니다.
+- `Handovers`: handoverId, date, partId, authorStudentId, title, content, status, priority, targetStudentId, createdAt, updatedAt, completedAt, visibility, active, deletedAt, deletedBy, pinned, acknowledgedBy
 
 ## 상태·유형
 
-- `workerType`: `NATIONAL_WORK`, `SHORT_TERM`, `OTHER`
+- `workerType`: 기존 값을 유지합니다. `NATIONAL_WORK`=국가근로, `SHORT_TERM`=단기근로, `OTHER`/`INTERNAL_WORK`=교내근로 집계입니다.
 - `WorkLogs.status`: `WORKING`, `COMPLETE`, `CANCELLED`
 - `Substitutions.status`: `OPEN`, `APPLIED`, `APPROVED`, `REJECTED`, `CANCELLED`
 - `flagCode`: `MISSING_CLOCK_OUT`, `INVALID_TIME`, `DUPLICATE_DAY`, `INACTIVE_STUDENT`, `SCHEDULE_MISMATCH`, `OUTSIDE_SCHEDULE`
@@ -49,4 +49,4 @@
 - 학생 bootstrap은 본인 `Students`, `Schedules`, `WorkLogs`와 본인 파트 위키·대체근무만 반환합니다.
 - `passwordHash`, `passwordSalt`, 개별 시급, 관리자 메모, 다른 학생 기록은 학생 응답에 포함되지 않습니다. 학생 본인에게만 본인 학번·이메일·전화번호를 반환합니다.
 - `Schedules`는 예정이고 `WorkLogs`는 실적입니다. 시간표 수정은 과거 `WorkLogs`를 바꾸지 않습니다.
-- 월 예산은 해당 월의 실제 달력 날짜와 학기·학생 근무기간을 교차해 예정 시간을 계산하며, 완료된 `WorkLogs`로 실제 비용을 계산합니다. 학생 개별 시급이 없으면 `defaultHourlyWage=10320`을 적용합니다.
+- 월 예산은 해당 월의 실제 평일 날짜와 학기·학생 근무기간·`Schedules`를 교차해 예정 시간을 계산하며, 완료된 `WorkLogs`로 실제 비용을 계산합니다. 소속 `partId`가 아니라 기존 `workerType`으로 국가/교내/단기를 분리합니다. 학생 개별 시급이 없으면 `defaultHourlyWage=10320`을 적용합니다.

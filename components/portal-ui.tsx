@@ -54,6 +54,19 @@ export function studentName(data: PortalData, id: string) {
 export function partName(data: PortalData, id: string) {
   return data.parts.find((p) => p.partId === id)?.partName || '확인 필요';
 }
+export function workerTypeKey(value?: string) {
+  if (value === 'NATIONAL_WORK') return 'NATIONAL_WORK';
+  if (value === 'SHORT_TERM') return 'SHORT_TERM';
+  return 'INTERNAL_WORK';
+}
+export function workerTypeName(value?: string) {
+  const key = workerTypeKey(value);
+  return key === 'NATIONAL_WORK'
+    ? '국가근로'
+    : key === 'SHORT_TERM'
+      ? '단기근로'
+      : '교내근로';
+}
 export function activeSchedules(data: PortalData, studentId?: string) {
   return data.schedules.filter(
     (s) =>

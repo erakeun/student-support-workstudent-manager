@@ -1,5 +1,5 @@
 /**
- * 한양대학교 ERICA 학생지원팀 근로관리 API V4
+ * 한양대학교 ERICA 학생지원팀 근로관리 API V5
  * 운영 데이터와 인증 해시의 원본은 Google Spreadsheet다.
  * 기존 행은 삭제하지 않고 initializeDatabase()가 누락 열/시트만 추가한다.
  */
@@ -18,8 +18,8 @@ const TABLES = {
   Substitutions: ['substitutionId', 'scheduleId', 'date', 'requesterStudentId', 'substituteStudentId', 'partId', 'status', 'reason', 'createdAt', 'updatedAt', 'approvedBy'],
   MigrationLog: ['migrationId', 'appliedAt', 'version', 'description', 'beforeStudents', 'afterStudents', 'beforeSchedules', 'afterSchedules'],
   Admins: ['adminId', 'name', 'loginId', 'passwordHash', 'passwordSalt', 'active', 'lastPasswordChangedAt', 'createdAt', 'createdBy'],
-  Budgets: ['month', 'totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget', 'note', 'updatedAt', 'updatedBy'],
-  Handovers: ['handoverId', 'date', 'partId', 'authorStudentId', 'title', 'content', 'status', 'priority', 'targetStudentId', 'createdAt', 'updatedAt', 'completedAt', 'visibility', 'active', 'deletedAt', 'deletedBy'],
+  Budgets: ['month', 'totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget', 'note', 'updatedAt', 'updatedBy', 'nationalBudget', 'internalBudget'],
+  Handovers: ['handoverId', 'date', 'partId', 'authorStudentId', 'title', 'content', 'status', 'priority', 'targetStudentId', 'createdAt', 'updatedAt', 'completedAt', 'visibility', 'active', 'deletedAt', 'deletedBy', 'pinned', 'acknowledgedBy'],
 };
 
 const COLUMN_WIDTHS = {
@@ -28,8 +28,8 @@ const COLUMN_WIDTHS = {
   Tasks: [135, 150, 220, 125, 125, 125, 180, 70, 160, 170], Employees: [135, 90, 125, 90, 220, 70],
   Semesters: [110, 150, 100, 100, 70, 160, 170], Settings: [230, 430], Substitutions: [145, 135, 100, 150, 150, 125, 100, 200, 165, 165, 170], MigrationLog: [140, 165, 90, 280, 100, 100, 110, 110],
   Admins: [140, 120, 150, 120, 120, 80, 170, 170, 150],
-  Budgets: [100, 130, 130, 130, 130, 240, 170, 160],
-  Handovers: [145, 100, 120, 145, 220, 420, 110, 110, 145, 170, 170, 170, 100, 70, 170, 160],
+  Budgets: [100, 130, 130, 130, 130, 240, 170, 160, 140, 140],
+  Handovers: [145, 100, 120, 145, 220, 420, 110, 110, 145, 170, 170, 170, 100, 70, 170, 160, 80, 220],
 };
 
 function doGet(e) {
@@ -48,7 +48,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v4', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -82,6 +82,8 @@ function route_(request) {
       studentApplySubstitution: () => ({ ok: true, record: studentApplySubstitution_(requireRole_(request.token, 'STUDENT'), request.substitutionId) }),
       studentUpdateContact: () => ({ ok: true, record: studentUpdateContact_(requireRole_(request.token, 'STUDENT'), request.email, request.phone) }),
       studentUpsertHandover: () => ({ ok: true, record: studentUpsertHandover_(requireRole_(request.token, 'STUDENT'), request.record) }),
+      studentDeleteHandover: () => ({ ok: true, record: studentDeleteHandover_(requireRole_(request.token, 'STUDENT'), request.handoverId) }),
+      studentAcknowledgeHandover: () => ({ ok: true, record: studentAcknowledgeHandover_(requireRole_(request.token, 'STUDENT'), request.handoverId) }),
     };
     if (!actions[request.action]) throw new Error('지원하지 않는 요청입니다.');
     return actions[request.action]();
@@ -148,17 +150,24 @@ function initializeDatabase(actorEmail) {
   ensureSettingDefault_('substitutionEnabled', 'true');
   ensureSettingDefault_('handoverEnabled', 'true');
   ensureSettingDefault_('nationalWorkDefaultHourlyWage', '10320');
+  ensureSettingDefault_('internalWorkDefaultHourlyWage', '10320');
   ensureSettingDefault_('shortTermDefaultHourlyWage', '10320');
   ensureSettingDefault_('otherDefaultHourlyWage', '10320');
   migrateStudentDefaults_();
-  const version = 'V4-OPERATIONS-2026-09-08';
+  const version = 'V5-WORKER-TYPE-BUDGETS-2026-09-08';
   const migrationApplied = readTable_('MigrationLog').some(row => row.version === version);
-  if (!migrationApplied) migrateOrganizationV4_(actorEmail);
+  if (!migrationApplied) migrateWorkerTypeBudgetsV5_(actorEmail);
   const afterStudents = countRows_('Students');
   const afterSchedules = countRows_('Schedules');
   if (beforeStudents !== afterStudents || beforeSchedules !== afterSchedules) throw new Error('마이그레이션 중 기존 행 수가 변경되어 중단했습니다.');
-  if (!migrationApplied) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '지원팀·예비군연대 조직 재편, 예산·인수인계·운영설정 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
-  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 V4 운영 구조를 확인했습니다.';
+  if (!migrationApplied) upsertRecord_('MigrationLog', { migrationId: Utilities.getUuid(), appliedAt: new Date(), version: version, description: '기존 workerType 유지, 국가·교내 예산 및 공유메모 확인 기능 비파괴 추가', beforeStudents: beforeStudents, afterStudents: afterStudents, beforeSchedules: beforeSchedules, afterSchedules: afterSchedules });
+  return '기존 학생 ' + afterStudents + '명과 일정 ' + afterSchedules + '구간을 보존한 채 근로유형별 예산 구조를 확인했습니다.';
+}
+
+function migrateWorkerTypeBudgetsV5_(actorEmail) {
+  // ensureTable_가 기존 열과 행을 유지한 채 신규 열만 오른쪽에 추가한다.
+  // 소속별 supportBudget/reserveBudget은 과거 호환용으로 남기고 근로유형 예산으로 복사하지 않는다.
+  ensureSettingDefault_('budgetMigrationNote', 'V5 workerType budgets · ' + String(actorEmail || 'migration'));
 }
 
 function migrateOrganizationV4_(actorEmail) {
@@ -239,7 +248,9 @@ function readStudentData_(user) {
   const samePartStudents = allStudents.filter(row => row.partId === student.partId && isActive_(row.active)).map(row => ({ studentId: row.studentId, name: row.name, partId: row.partId }));
   const substitutions = readTable_('Substitutions').filter(row => row.partId === student.partId && (row.requesterStudentId === student.studentId || row.status === 'OPEN' || row.substituteStudentId === student.studentId));
   const handovers = readTable_('Handovers').filter(row => isActive_(row.active) && (row.visibility === 'PUBLIC' || row.partId === student.partId || row.authorStudentId === student.studentId || row.targetStudentId === student.studentId));
-  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active) && (row.partId === student.partId || !row.partId)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers });
+  // 지원팀과 예비군연대가 같은 사무실의 업무 정보를 함께 확인한다.
+  // 대체근무 후보는 기존 정책대로 같은 파트에만 제한한다.
+  const data = baseData_({ students: [sanitizeStudentForSelf_(student)], schedules: schedules, workLogs: workLogs, tasks: readTable_('Tasks').filter(row => isActive_(row.active)), substitutions: substitutions, substitutionCandidates: samePartStudents, handovers: handovers });
   data.currentUser = { role: 'STUDENT', studentId: student.studentId, name: student.name, partId: student.partId };
   return data;
 }
@@ -251,7 +262,7 @@ function sanitizeStudentForSelf_(student) { return { studentId: student.studentI
 function adminUpsertStudent_(user, input, initialPassword) {
   const incoming = Object.assign({}, input || {}); const existing = incoming.studentId && findById_('Students', 'studentId', incoming.studentId); const record = Object.assign({}, existing || {}, incoming);
   if (!record.name || !record.studentNumber || !record.partId) throw new Error('이름, 학번, 파트를 입력하세요.');
-  if (!['NATIONAL_WORK', 'SHORT_TERM', 'OTHER'].includes(String(record.workerType))) throw new Error('근로유형을 확인하세요.');
+  if (!['NATIONAL_WORK', 'INTERNAL_WORK', 'SHORT_TERM', 'OTHER'].includes(String(record.workerType))) throw new Error('근로유형을 확인하세요.');
   if (record.workerType === 'SHORT_TERM' && (!record.startDate || !record.endDate)) throw new Error('단기근로자는 시작일과 종료일이 필요합니다.');
   if (record.startDate && record.endDate && record.startDate > record.endDate) throw new Error('근무 종료일은 시작일 이후여야 합니다.');
   record.studentId = record.studentId || Utilities.getUuid(); record.loginId = record.loginId || String(record.studentNumber); record.role = 'STUDENT'; record.active = record.active !== false;
@@ -309,9 +320,16 @@ function adminSaveSettings_(user, values) { const wage = Number((values || {}).d
 function adminUpsertBudget_(user, input) {
   const record = Object.assign({}, input || {});
   if (!/^\d{4}-\d{2}$/.test(String(record.month || ''))) throw new Error('예산 월을 확인하세요.');
-  ['totalBudget', 'supportBudget', 'reserveBudget', 'shortTermBudget'].forEach(key => { record[key] = Math.max(0, Number(record[key] || 0)); });
+  ['totalBudget', 'nationalBudget', 'internalBudget', 'shortTermBudget'].forEach(key => { record[key] = optionalBudget_(record[key]); });
   record.note = safeText_(record.note, 500); record.updatedAt = new Date(); record.updatedBy = actorId_(user);
   return upsertRecord_('Budgets', record);
+}
+
+function optionalBudget_(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('예산은 0원 이상으로 입력하세요.');
+  return Math.round(amount);
 }
 
 function validateHandover_(record) {
@@ -323,8 +341,9 @@ function validateHandover_(record) {
 }
 
 function adminUpsertHandover_(user, input) {
-  const record = Object.assign({}, input || {}); const existing = record.handoverId && findById_('Handovers', 'handoverId', record.handoverId);
+  const incoming = Object.assign({}, input || {}); const existing = incoming.handoverId && findById_('Handovers', 'handoverId', incoming.handoverId); const record = Object.assign({}, existing || {}, incoming);
   record.handoverId = record.handoverId || Utilities.getUuid(); record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
+  record.pinned = record.pinned === true || String(record.pinned).toUpperCase() === 'TRUE';
   if (record.authorStudentId && !findById_('Students', 'studentId', record.authorStudentId)) throw new Error('작성 학생을 찾을 수 없습니다.');
   validateHandover_(record); return upsertRecord_('Handovers', record);
 }
@@ -337,10 +356,28 @@ function adminDeleteHandover_(user, handoverId) {
 function studentUpsertHandover_(user, input) {
   if (!settingEnabled_('handoverEnabled')) throw new Error('현재 인수인계 작성이 중지되어 있습니다.');
   const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student);
-  const record = Object.assign({}, input || {}); const existing = record.handoverId && findById_('Handovers', 'handoverId', record.handoverId);
+  const incoming = Object.assign({}, input || {}); const existing = incoming.handoverId && findById_('Handovers', 'handoverId', incoming.handoverId); const record = Object.assign({}, existing || {}, incoming);
   if (existing && existing.authorStudentId !== user.studentId) throw new Error('본인이 작성한 인수인계만 수정할 수 있습니다.');
-  record.handoverId = record.handoverId || Utilities.getUuid(); record.partId = student.partId; record.authorStudentId = user.studentId; record.priority = existing ? existing.priority : 'NORMAL'; record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
+  record.handoverId = record.handoverId || Utilities.getUuid(); record.partId = student.partId; record.authorStudentId = user.studentId; record.priority = existing ? existing.priority : 'NORMAL'; record.pinned = existing ? existing.pinned : false; record.acknowledgedBy = existing ? existing.acknowledgedBy : ''; record.createdAt = existing ? existing.createdAt : new Date(); record.updatedAt = new Date();
   validateHandover_(record); return upsertRecord_('Handovers', record);
+}
+
+function studentDeleteHandover_(user, handoverId) {
+  const record = findById_('Handovers', 'handoverId', handoverId);
+  if (!record || !isActive_(record.active)) throw new Error('공유메모를 찾을 수 없습니다.');
+  if (String(record.authorStudentId) !== String(user.studentId)) throw new Error('본인이 작성한 공유메모만 삭제할 수 있습니다.');
+  record.active = false; record.deletedAt = new Date(); record.deletedBy = user.studentId; record.updatedAt = new Date();
+  return upsertRecord_('Handovers', record);
+}
+
+function studentAcknowledgeHandover_(user, handoverId) {
+  const record = findById_('Handovers', 'handoverId', handoverId);
+  const student = findById_('Students', 'studentId', user.studentId); validateStudentPeriod_(student);
+  if (!record || !isActive_(record.active) || (record.visibility !== 'PUBLIC' && record.partId !== student.partId)) throw new Error('확인할 수 있는 공유메모가 아닙니다.');
+  const ids = String(record.acknowledgedBy || '').split(',').map(value => value.trim()).filter(Boolean);
+  if (ids.indexOf(user.studentId) < 0) ids.push(user.studentId);
+  record.acknowledgedBy = ids.join(','); record.updatedAt = new Date();
+  return upsertRecord_('Handovers', record);
 }
 
 function clockIn_(user) {

@@ -13,7 +13,7 @@ export type Student = {
   name: string;
   studentNumber: string;
   partId: string;
-  workerType: 'NATIONAL_WORK' | 'SHORT_TERM' | 'OTHER';
+  workerType: 'NATIONAL_WORK' | 'INTERNAL_WORK' | 'SHORT_TERM' | 'OTHER';
   startDate: string;
   endDate: string;
   taskSummary: string;
@@ -112,9 +112,12 @@ export type Substitution = {
 export type Budget = {
   month: string;
   totalBudget: number | string;
-  supportBudget: number | string;
-  reserveBudget: number | string;
+  nationalBudget: number | string;
+  internalBudget: number | string;
   shortTermBudget: number | string;
+  /** V4 이전 소속별 예산 열. 기존 시트 호환을 위해 읽기만 유지한다. */
+  supportBudget?: number | string;
+  reserveBudget?: number | string;
   note: string;
   updatedAt?: string;
   updatedBy?: string;
@@ -134,6 +137,8 @@ export type Handover = {
   updatedAt?: string;
   completedAt?: string;
   visibility?: 'PUBLIC' | 'PART';
+  pinned?: boolean;
+  acknowledgedBy?: string;
   active?: boolean;
 };
 
