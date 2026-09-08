@@ -49,7 +49,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.3', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.4', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -466,14 +466,14 @@ function adminCancelSubstitution_(user, substitutionId) {
   request.status = 'CANCELLED'; request.updatedAt = new Date(); request.approvedBy = actorId_(user); return upsertRecord_('Substitutions', request);
 }
 
-function withWorkLogFlags_(logs, students, schedules) { return logs.map(log => { const copy = Object.assign({}, log); const student = students.find(row => row.studentId === log.studentId); copy.flagCode = computeLogFlag_(copy, student, schedules, logs.filter(row => row.logId !== log.logId)); return copy; }); }
-function computeLogFlag_(log, student, schedules, peers) {
+function withWorkLogFlags_(logs, students, schedules) { const semesters = logs.length ? readTable_('Semesters') : []; return logs.map(log => { const copy = Object.assign({}, log); const student = students.find(row => row.studentId === log.studentId); copy.flagCode = computeLogFlag_(copy, student, schedules, logs.filter(row => row.logId !== log.logId), semesters); return copy; }); }
+function computeLogFlag_(log, student, schedules, peers, semesters) {
   const flags = [];
   if (!log.clockOut && log.status === 'WORKING') flags.push('MISSING_CLOCK_OUT');
   if (log.clockIn && log.clockOut && new Date(log.clockOut).getTime() < new Date(log.clockIn).getTime()) flags.push('INVALID_TIME');
   if (peers.some(row => row.studentId === log.studentId && row.date === log.date && row.status !== 'CANCELLED')) flags.push('DUPLICATE_DAY');
   if (student && !isActive_(student.active)) flags.push('INACTIVE_STUDENT');
-  const date = new Date(String(log.date) + 'T12:00:00+09:00'); const weekday = date.getDay(); const planned = schedules.filter(row => row.studentId === log.studentId && Number(row.dayOfWeek) === weekday && isActive_(row.active));
+  const date = new Date(String(log.date) + 'T12:00:00+09:00'); const weekday = date.getDay(); const terms = semesters || readTable_('Semesters'); const planned = schedules.filter(row => { const term = terms.find(item => String(item.semesterId) === String(row.semesterId)); return row.studentId === log.studentId && (row.date ? row.date === log.date : Number(row.dayOfWeek) === weekday) && isActive_(row.active) && (!term || ((!term.startDate || log.date >= term.startDate) && (!term.endDate || log.date <= term.endDate))) && scheduleMatchesPeriod_(row, term, log.date); });
   if (log.clockIn && log.clockOut && planned.length) { const actualStart = Utilities.formatDate(new Date(log.clockIn), TIMEZONE, 'HH:mm'); const actualEnd = Utilities.formatDate(new Date(log.clockOut), TIMEZONE, 'HH:mm'); if (!planned.some(row => Math.abs(timeMinutes_(actualStart) - timeMinutes_(row.startTime)) <= 60 && Math.abs(timeMinutes_(actualEnd) - timeMinutes_(row.endTime)) <= 60)) flags.push('SCHEDULE_MISMATCH'); }
   return flags.join(',');
 }

@@ -47,6 +47,15 @@ test('학기 일반 수정으로 방학 전환을 위조하거나 누적기간�
   const result=b.adminUpsertSemester_({}, {...term,vacationStartDate:''});assert.equal(result.vacationStartDate,'2026-12-21');
   assert.throws(()=>b.adminUpsertSemester_({}, {...term,endDate:'2026-12-20'}),/방학 시작일/);
 });
+test('미리 등록한 방학 시간은 학기 중 근태 불일치 판정에 섞이지 않는다',()=>{
+  const b=backend();b.Utilities={formatDate:(date)=>date.toISOString().slice(11,16)};
+  const log={studentId:'TEST_A',date:'2026-09-08',clockIn:'2026-09-08T09:00:00Z',clockOut:'2026-09-08T10:00:00Z',status:'COMPLETE'};
+  const rows=[{studentId:'TEST_A',semesterId:'TEST_TERM',period:'VACATION',dayOfWeek:2,startTime:'13:00',endTime:'15:00',active:true}];
+  const terms=[{semesterId:'TEST_TERM',startDate:'2026-09-01',endDate:'2027-02-28'}];
+  assert.equal(b.computeLogFlag_(log,{active:true},rows,[],terms),'');
+  terms[0].vacationStartDate='2026-09-08';
+  assert.equal(b.computeLogFlag_(log,{active:true},rows,[],terms),'SCHEDULE_MISMATCH');
+});
 const student = {studentId:'TEST_A',name:'TEST A',workerType:'NATIONAL_WORK',active:true,hourlyWage:'',startDate:'',endDate:''};
 function data() { return {students:[{...student}],semesters:[{semesterId:'TEST_TERM',startDate:'2026-09-01',endDate:'2026-12-31'}],settings:{activeSemester:'TEST_TERM',defaultHourlyWage:'10320'},schedules:[{studentId:'TEST_A',active:true,semesterId:'TEST_TERM',dayOfWeek:2,startTime:'09:00',endTime:'10:00'}],workLogs:[]}; }
 
