@@ -1,4 +1,12 @@
 import type { PortalData, Schedule, Student } from '@/lib/portal-types';
+import { scheduleMatchesPeriod } from '@/lib/budget-calculation';
+
+export function currentPeriodSchedule(data: PortalData, schedule: Schedule) {
+  const date = seoulNow();
+  const mondayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - mondayOffset + Number(schedule.dayOfWeek) - 1);
+  return scheduleOnDate(data, schedule, isoDate(date));
+}
 
 export const DAYS = ['', '월', '화', '수', '목', '금'];
 export const PART_TONES: Record<string, string> = {
@@ -82,6 +90,7 @@ export function scheduleOnDate(data: PortalData, schedule: Schedule, date: strin
   const student = data.students.find(row => row.studentId === schedule.studentId);
   return day >= 1 && day <= 5 && schedule.active !== false && student?.active !== false &&
     String(schedule.semesterId) === String(data.settings.activeSemester) &&
+    scheduleMatchesPeriod(schedule, term, date) &&
     (!term?.startDate || date >= term.startDate) && (!term?.endDate || date <= term.endDate) &&
     (!student?.startDate || date >= student.startDate) && (!student?.endDate || date <= student.endDate) &&
     (schedule.date ? schedule.date === date : Number(schedule.dayOfWeek) === day);

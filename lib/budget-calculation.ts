@@ -1,4 +1,9 @@
-import type { PortalData, Student } from './portal-types';
+import type { PortalData, Student, Schedule, Semester } from './portal-types';
+
+export function scheduleMatchesPeriod(schedule: Pick<Schedule, 'period'>, term: Pick<Semester, 'vacationStartDate'> | undefined, date: string) {
+  const period = term?.vacationStartDate && date >= term.vacationStartDate ? 'VACATION' : 'TERM';
+  return (schedule.period || 'TERM') === period;
+}
 
 // Calendar arithmetic must not change with the operator's browser time zone.
 export function scheduledMinutesForMonth(data: PortalData, student: Student, month: string) {
@@ -13,6 +18,7 @@ export function scheduledMinutesForMonth(data: PortalData, student: Student, mon
     if ((term?.startDate && date < term.startDate) || (term?.endDate && date > term.endDate) || (student.startDate && date < student.startDate) || (student.endDate && date > student.endDate)) continue;
     for (const row of data.schedules) {
       if (row.active === false || row.studentId !== student.studentId || String(row.semesterId) !== String(data.settings.activeSemester)) continue;
+      if (!scheduleMatchesPeriod(row, term, date)) continue;
       if (row.date ? row.date !== date : Number(row.dayOfWeek) !== weekday) continue;
       const toMinutes = (value: string) => { const [h,m] = value.split(':').map(Number); return h * 60 + m; };
       total += Math.max(0, toMinutes(row.endTime) - toMinutes(row.startTime));

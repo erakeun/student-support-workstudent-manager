@@ -13,6 +13,40 @@ function backend() {
 const budgetModule = { exports: {} };
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../lib/budget-calculation.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:budgetModule.exports,Date});
 const { monthlyBudgetRows, scheduledMinutesForMonth } = budgetModule.exports;
+
+test('종강 전후 실제 날짜에 학기 중·방학 시간표를 분리 적용하며 원본을 보존한다',()=>{
+  const d=data(); d.semesters[0].endDate='2027-02-28';
+  d.schedules.push({...d.schedules[0],period:'VACATION',startTime:'13:00',endTime:'15:00'});
+  assert.equal(scheduledMinutesForMonth(d,d.students[0],'2026-09'),300);
+  d.semesters[0].vacationStartDate='2026-09-15';
+  const original=JSON.stringify(d);
+  assert.equal(scheduledMinutesForMonth(d,d.students[0],'2026-09'),480);
+  assert.equal(scheduledMinutesForMonth(d,d.students[0],'2027-02'),480);
+  assert.equal(scheduledMinutesForMonth(d,d.students[0],'2027-03'),0);
+  assert.equal(JSON.stringify(d),original);
+  d.schedules.pop(); assert.equal(scheduledMinutesForMonth(d,d.students[0],'2026-09'),120);
+});
+test('종강 전환은 서버 날짜·관리자 권한으로 한 번만 기록하고 로그를 건드리지 않는다',()=>{
+  const b=backend(); let writes=0;
+  const term={semesterId:'TEST_TERM',startDate:'2026-09-01',endDate:'2027-02-28'};
+  b.today_=()=> '2026-12-21'; b.activeSemesterId_=()=> 'TEST_TERM'; b.findById_=()=>term;
+  b.upsertRecord_=(table,record)=>{assert.equal(table,'Semesters');writes++;Object.assign(term,record);return record;};
+  assert.throws(()=>b.adminStartVacation_({loginId:'TEST_ADMIN'},'OTHER'),/현재 운영/);
+  b.adminStartVacation_({loginId:'TEST_ADMIN'},'TEST_TERM');
+  assert.equal(term.vacationStartDate,'2026-12-21');assert.equal(term.vacationStartedBy,'TEST_ADMIN');
+  b.today_=()=> '2026-12-22';b.adminStartVacation_({loginId:'TEST_ADMIN'},'TEST_TERM');assert.equal(writes,1);
+  assert.equal(b.scheduleMatchesPeriod_({},term,'2026-12-20'),true);
+  assert.equal(b.scheduleMatchesPeriod_({},term,'2026-12-21'),false);
+  assert.equal(b.scheduleMatchesPeriod_({period:'VACATION'},term,'2026-12-21'),true);
+  b.requireRole_=()=>{throw new Error('권한 없음');};b.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})};
+  assert.equal(b.route_({action:'adminStartVacation',semesterId:'TEST_TERM'}).ok,false);assert.equal(writes,1);
+});
+test('학기 일반 수정으로 방학 전환을 위조하거나 누적기간에서 제외할 수 없다',()=>{
+  const b=backend();const term={semesterId:'TEST_TERM',semesterName:'TEST',startDate:'2026-09-01',endDate:'2027-02-28',vacationStartDate:'2026-12-21',active:true};
+  b.findById_=()=>term;b.upsertRecord_=(_,row)=>row;
+  const result=b.adminUpsertSemester_({}, {...term,vacationStartDate:''});assert.equal(result.vacationStartDate,'2026-12-21');
+  assert.throws(()=>b.adminUpsertSemester_({}, {...term,endDate:'2026-12-20'}),/방학 시작일/);
+});
 const student = {studentId:'TEST_A',name:'TEST A',workerType:'NATIONAL_WORK',active:true,hourlyWage:'',startDate:'',endDate:''};
 function data() { return {students:[{...student}],semesters:[{semesterId:'TEST_TERM',startDate:'2026-09-01',endDate:'2026-12-31'}],settings:{activeSemester:'TEST_TERM',defaultHourlyWage:'10320'},schedules:[{studentId:'TEST_A',active:true,semesterId:'TEST_TERM',dayOfWeek:2,startTime:'09:00',endTime:'10:00'}],workLogs:[]}; }
 

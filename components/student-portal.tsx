@@ -35,6 +35,7 @@ import {
   PART_TONES,
   PageTitle,
   activeSemester,
+  currentPeriodSchedule,
   clockText,
   flagLabel,
   hoursText,
@@ -199,7 +200,7 @@ export function StudentPortal({
             <CardDescription>월–금 개인 일정</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">{[1,2,3,4,5].map((day) => { const rows=data.schedules.filter(s => !s.date && s.active !== false && Number(s.dayOfWeek)===day); return <button key={day} onClick={() => setView('schedule')} className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm"><b>{DAYS[day]}</b><span className="font-mono text-xs text-slate-500">{rows.length ? rows.map(row => `${row.startTime}–${row.endTime}`).join(', ') : '근무 없음'}</span></button>; })}</div>
+            <div className="space-y-2">{[1,2,3,4,5].map((day) => { const rows=data.schedules.filter(s => !s.date && currentPeriodSchedule(data,s) && s.active !== false && Number(s.dayOfWeek)===day); return <button key={day} onClick={() => setView('schedule')} className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm"><b>{DAYS[day]}</b><span className="font-mono text-xs text-slate-500">{rows.length ? rows.map(row => `${row.startTime}–${row.endTime}`).join(', ') : '근무 없음'}</span></button>; })}</div>
           </CardContent>
         </Card>
       </section>
@@ -340,7 +341,7 @@ function ScheduleView({ data }: { data: PortalData }) {
             <CardContent className="space-y-2">
               {data.schedules
                 .filter(
-                  (s) => !s.date && Number(s.dayOfWeek) === day && s.active !== false,
+                  (s) => !s.date && currentPeriodSchedule(data,s) && Number(s.dayOfWeek) === day && s.active !== false,
                 )
                 .map((s) => (
                   <div
@@ -352,7 +353,7 @@ function ScheduleView({ data }: { data: PortalData }) {
                   </div>
                 ))}
               {!data.schedules.some(
-                (s) => !s.date && Number(s.dayOfWeek) === day && s.active !== false,
+                (s) => !s.date && currentPeriodSchedule(data,s) && Number(s.dayOfWeek) === day && s.active !== false,
               ) && <span className="text-sm text-slate-400">근무 없음</span>}
             </CardContent>
           </Card>

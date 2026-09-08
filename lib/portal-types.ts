@@ -32,6 +32,7 @@ export type Student = {
 };
 
 export type Schedule = {
+  period?: 'TERM' | 'VACATION' | '';
   scheduleId: string;
   studentId: string;
   dayOfWeek: number;
@@ -86,6 +87,9 @@ export type WorkLog = {
 };
 
 export type Semester = {
+  vacationStartDate?: string;
+  vacationStartedAt?: string;
+  vacationStartedBy?: string;
   semesterId: string;
   semesterName: string;
   startDate: string;

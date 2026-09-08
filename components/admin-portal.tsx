@@ -56,6 +56,7 @@ import {
   PART_TONES,
   PageTitle,
   activeSemester,
+  currentPeriodSchedule,
   clockText,
   flagLabel,
   hoursText,
@@ -389,7 +390,7 @@ function Dashboard({
           </CardContent>
         </Card>
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2"><Card className="shadow-none"><CardHeader><CardTitle>이번 주 스케줄</CardTitle><CardDescription>월–금 정규 일정 요약</CardDescription></CardHeader><CardContent className="grid grid-cols-5 gap-2">{[1,2,3,4,5].map(day => <button key={day} onClick={() => setView('week')} className="rounded-lg border bg-slate-50 p-3 text-center"><b className="text-sm">{DAYS[day]}</b><span className="mt-1 block text-lg font-black">{data.schedules.filter(row => row.active !== false && !row.date && Number(row.dayOfWeek) === day).length}</span><small className="text-slate-400">구간</small></button>)}</CardContent></Card><Card className="shadow-none"><CardHeader><CardTitle>이번 달 스케줄</CardTitle><CardDescription>{monthKey()} 실제 달력 기준</CardDescription></CardHeader><CardContent><p className="text-3xl font-black">{monthlyScheduleCount(data, monthKey())}건</p><p className="mt-2 text-sm text-slate-500">날짜 지정 일정과 정규 반복 일정을 함께 집계합니다.</p><Button variant="outline" className="mt-4" onClick={() => setView('week')}>월간 시간표 열기</Button></CardContent></Card></div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2"><Card className="shadow-none"><CardHeader><CardTitle>이번 주 스케줄</CardTitle><CardDescription>월–금 정규 일정 요약</CardDescription></CardHeader><CardContent className="grid grid-cols-5 gap-2">{[1,2,3,4,5].map(day => <button key={day} onClick={() => setView('week')} className="rounded-lg border bg-slate-50 p-3 text-center"><b className="text-sm">{DAYS[day]}</b><span className="mt-1 block text-lg font-black">{data.schedules.filter(row => row.active !== false && String(row.semesterId) === String(data.settings.activeSemester) && currentPeriodSchedule(data, row) && !row.date && Number(row.dayOfWeek) === day).length}</span><small className="text-slate-400">구간</small></button>)}</CardContent></Card><Card className="shadow-none"><CardHeader><CardTitle>이번 달 스케줄</CardTitle><CardDescription>{monthKey()} 실제 달력 기준</CardDescription></CardHeader><CardContent><p className="text-3xl font-black">{monthlyScheduleCount(data, monthKey())}건</p><p className="mt-2 text-sm text-slate-500">날짜 지정 일정과 정규 반복 일정을 함께 집계합니다.</p><Button variant="outline" className="mt-4" onClick={() => setView('week')}>월간 시간표 열기</Button></CardContent></Card></div>
       <Card className="mt-4 shadow-none"><CardHeader><CardTitle>공유메모·인수인계</CardTitle><CardDescription>고정·중요·미처리 순으로 최근 내용을 확인합니다.</CardDescription></CardHeader><CardContent className="grid gap-2 md:grid-cols-2">{openHandovers.slice().sort((a,b) => Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || Number(b.priority === 'IMPORTANT')-Number(a.priority === 'IMPORTANT')).slice(0,4).map(row => <button key={row.handoverId} className="rounded-lg border bg-slate-50 p-3 text-left" onClick={() => setView('handovers')}><span className="text-xs text-slate-500">{row.pinned ? '고정 · ' : ''}{row.priority === 'IMPORTANT' ? '중요 · ' : ''}{partName(data,row.partId)} · {studentName(data,row.authorStudentId)}</span><b className="mt-1 block text-sm">{row.title}</b></button>)}{!openHandovers.length && <Empty>미완료 공유메모가 없습니다.</Empty>}</CardContent></Card>
       <Card className="mt-4 shadow-none"><CardHeader><CardTitle>확인 필요 근태·예산</CardTitle><CardDescription>{monthKey()} 운영 점검</CardDescription></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{budgetLabels.map(([label,value]) => { const configured=value !== '' && value !== undefined && value !== null; return <button key={label} onClick={() => setView('budget')} className="rounded-lg border p-3 text-left"><span className="text-xs text-slate-500">{label} 예산</span><b className="mt-1 block text-sm">{configured ? `${Number(value).toLocaleString()}원` : '예산 미설정'}</b></button>; })}<button onClick={() => setView('logs')} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-left"><span className="text-xs text-amber-700">근태 확인 필요</span><b className="mt-1 block text-sm">{warnings.length}건</b></button></CardContent></Card>
       <TaskSearch data={data} />
@@ -398,7 +399,7 @@ function Dashboard({
 }
 function monthlyScheduleCount(data: PortalData, month: string) {
   const [year, monthNumber] = month.split('-').map(Number); const last = new Date(year, monthNumber, 0).getDate(); let total = 0;
-  for (let dateNumber = 1; dateNumber <= last; dateNumber += 1) { const date = `${month}-${String(dateNumber).padStart(2,'0')}`; const day = new Date(`${date}T12:00:00+09:00`).getDay(); total += data.schedules.filter(row => row.active !== false && (row.date ? row.date === date : Number(row.dayOfWeek) === day)).length; }
+  for (let dateNumber = 1; dateNumber <= last; dateNumber += 1) { const date = `${month}-${String(dateNumber).padStart(2,'0')}`; total += data.schedules.filter(row => scheduleOnDate(data, row, date)).length; }
   return total;
 }
 function Metric({
@@ -621,7 +622,7 @@ function Week({ data, edit }: { data: PortalData; edit: (e: Editor) => void }) {
                         {rows
                           .filter(
                             (s) =>
-                              !s.date &&
+                              !s.date && currentPeriodSchedule(data, s) &&
                               Number(s.dayOfWeek) === day &&
                               minutes(s.startTime) <= start &&
                               minutes(s.endTime) > start,
@@ -787,22 +788,25 @@ function Schedules({
   onAction: (a: string, p?: Record<string, unknown>) => Promise<void>;
 }) {
   const active = data.settings.activeSemester;
+  const [period, setPeriod] = useState('TERM');
   const rows = data.schedules.filter(
-    (s) => String(s.semesterId) === String(active),
+    (s) => String(s.semesterId) === String(active) && (s.period || 'TERM') === period,
   );
   return (
     <>
       <PageTitle
         eyebrow="SCHEDULE EDITOR"
         title="시간표 편집"
-        description="현재 학기의 월~금 정규 근무를 30분 단위로 관리합니다."
+        description="학기 중·방학 시간을 별도로 설정합니다. 방학 일정은 학기 관리의 종강 버튼을 누른 날부터 적용됩니다."
         action={
-          <Button onClick={() => edit({ kind: 'schedule' })}>
+          <Button onClick={() => edit({ kind: 'schedule', record: { period } })}>
             <Plus />
             시간 추가
           </Button>
         }
       />
+      <label className="field-label mb-4 max-w-xs">시간표 구분<NativeSelect value={period} onChange={e => setPeriod(e.target.value)}><NativeSelectOption value="TERM">학기 중</NativeSelectOption><NativeSelectOption value="VACATION">방학</NativeSelectOption></NativeSelect></label>
+      {!rows.length && <p className="mb-4 text-sm text-amber-700">{period === 'VACATION' ? '방학 시간표 미설정 — 시간 추가로 실제 방학 근무시간을 입력하세요.' : '등록된 시간이 없습니다.'}</p>}
       <Card className="overflow-auto shadow-none">
         <Table>
           <TableHeader>
@@ -1090,12 +1094,14 @@ function Semesters({
   edit: (e: Editor) => void;
   onAction: (a: string, p?: Record<string, unknown>) => Promise<void>;
 }) {
+  const [confirmId, setConfirmId] = useState('');
+  const [switching, setSwitching] = useState(false);
   return (
     <>
       <PageTitle
         eyebrow="SEMESTERS"
         title="학기 관리"
-        description="새 학기는 독립적으로 만들며 과거 학생과 근무기록을 삭제하지 않습니다."
+        description="근로 운영기간 안에서 학기 중→방학으로 전환합니다. 누적시간과 기존 기록은 그대로 이어집니다."
         action={
           <Button onClick={() => edit({ kind: 'semester' })}>
             <Plus />새 학기
@@ -1108,7 +1114,8 @@ function Semesters({
             <CardHeader>
               <CardTitle>{s.semesterName}</CardTitle>
               <CardDescription>
-                {s.startDate} ~ {s.endDate}
+                근로 운영기간: {s.startDate || '미설정'} ~ {s.endDate || '미설정'}<br />
+                {s.vacationStartDate ? `방학 · ${s.vacationStartDate}부터` : '학기 중 · 종강일 미정'}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-between gap-2">
@@ -1137,9 +1144,14 @@ function Semesters({
                 </Button>
               )}</div>
             </CardContent>
+            {String(data.settings.activeSemester) === String(s.semesterId) && !s.vacationStartDate && <CardContent><Button variant="outline" onClick={() => setConfirmId(s.semesterId)}>종강·방학 시작</Button><p className="mt-2 text-xs text-slate-500">시간표 편집에서 방학 시간을 먼저 준비할 수 있습니다.</p></CardContent>}
           </Card>
         ))}
       </div>
+      <Dialog open={Boolean(confirmId)} onOpenChange={open => !open && !switching && setConfirmId('')}><DialogContent><DialogHeader><DialogTitle>오늘부터 방학을 시작할까요?</DialogTitle><DialogDescription>오늘({isoDate()})부터 방학 시간표만 적용합니다. 기존 학기 중 시간표와 근로기록은 보존되며 누적시간은 초기화되지 않습니다. 날짜는 서버의 한국시간으로 기록됩니다.</DialogDescription></DialogHeader>
+        {!data.schedules.some(row => row.semesterId === confirmId && row.period === 'VACATION' && row.active !== false) && <p className="text-sm text-amber-700">방학 시간표 미설정: 전환 후 예정 근무가 표시되지 않습니다. 실제 방학 시간을 먼저 설정하는 것을 권장합니다.</p>}
+        <div className="flex justify-end gap-2"><Button variant="outline" disabled={switching} onClick={() => setConfirmId('')}>취소</Button><Button disabled={switching} onClick={async () => { setSwitching(true); try { await onAction('adminStartVacation', { semesterId: confirmId }); setConfirmId(''); } catch { /* parent displays the API error */ } finally { setSwitching(false); } }}>{switching ? '전환 중…' : '종강 확정 · 방학 시작'}</Button></div>
+      </DialogContent></Dialog>
     </>
   );
 }
@@ -1498,11 +1510,11 @@ function EditorDialog({
                 />
               </label>
               <label className="field-label">
-                시작일
+                근로 운영 시작일
                 <Input name="startDate" type="date" defaultValue={String(r.startDate || '')} required />
               </label>
               <label className="field-label">
-                종료일
+                근로 운영 종료일 (종강일 아님)
                 <Input name="endDate" type="date" defaultValue={String(r.endDate || '')} required />
               </label>
             </>
@@ -1672,6 +1684,7 @@ function ScheduleFields({
 }) {
   return (
     <>
+      <label className="field-label sm:col-span-2">시간표 구분<NativeSelect name="period" defaultValue={String(r.period || 'TERM')}><NativeSelectOption value="TERM">학기 중</NativeSelectOption><NativeSelectOption value="VACATION">방학</NativeSelectOption></NativeSelect></label>
       <label className="field-label sm:col-span-2">
         학생
         <NativeSelect
