@@ -114,3 +114,10 @@ test('일반 저장의 스키마 확인은 기존 시트 전체 서식을 다시
   b.spreadsheet_=()=>({getSheetByName:()=>sheet});
   b.ensureTable_('Budgets',true);assert.equal(formatting,0);
 });
+test('기본 근무시간 Date 셀은 시간으로, 활성 학기 Date 셀은 학기 ID로 읽으며 원본을 쓰지 않는다',()=>{
+  const b=backend();const rows=[['key','value'],['defaultWorkStartTime',new Date('1899-12-30T09:00:00Z')],['defaultWorkEndTime',new Date('1899-12-30T17:00:00Z')],['activeSemester',new Date('2026-02-01T00:00:00Z')],['defaultHourlyWage',10320]];
+  const original=JSON.stringify(rows);
+  b.spreadsheet_=()=>({getSheetByName:()=>({getLastRow:()=>rows.length,getLastColumn:()=>2,getRange:(r,c,n,m)=>({getValues:()=>rows.slice(r-1,r-1+n).map(row=>row.slice(c-1,c-1+m))})})});
+  b.Utilities={formatDate:(d,tz,format)=>format==='HH:mm'?d.toISOString().slice(11,16):'2026-2'};
+  const settings=b.settingsObject_();assert.equal(settings.defaultWorkStartTime,'09:00');assert.equal(settings.defaultWorkEndTime,'17:00');assert.equal(settings.activeSemester,'2026-2');assert.equal(settings.defaultHourlylyWage,undefined);assert.equal(settings.defaultHourlyWage,'10320');assert.equal(JSON.stringify(rows),original);
+});

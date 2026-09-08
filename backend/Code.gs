@@ -49,7 +49,7 @@ function doPost(e) {
 function route_(request) {
   try {
     const actions = {
-      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.4', time: new Date().toISOString() }),
+      health: () => ({ ok: true, service: 'student-support-workstudent-manager-v5', auditRevision: '2026-09-08.5', time: new Date().toISOString() }),
       adminLogin: () => adminLogin_(request.loginId, request.password),
       studentLogin: () => studentLogin_(request.loginId, request.password),
       session: () => sessionInfo_(request.token),
@@ -488,7 +488,11 @@ function readTable_(name) {
   const sheet = spreadsheet_().getSheetByName(name); if (!sheet || sheet.getLastRow() < 2) return [];
   const liveHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, liveHeaders.length).getValues().filter(row => row.some(value => value !== '')).map(row => liveHeaders.reduce((record, header, index) => {
-    if (!header) return record; record[header] = normalizeCell_(header, row[index]);
+    if (!header) return record;
+    // Sheets stores time-only settings as Date cells too. Do not decode them as semester IDs.
+    const settingKey = name === 'Settings' ? String(row[liveHeaders.indexOf('key')] || '') : '';
+    const valueHeader = header === 'value' && ['defaultWorkStartTime', 'defaultWorkEndTime'].includes(settingKey) ? 'startTime' : header;
+    record[header] = normalizeCell_(valueHeader, row[index]);
     return record;
   }, {}));
 }
