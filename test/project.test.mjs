@@ -111,6 +111,8 @@ test('프론트엔드는 단기 Hanyang 토큰을 앱 세션으로 교환하고 
   assert.match(api, /workPortalAppSession/);
   assert.match(api, /adminLogin/);
   assert.match(api, /studentLogin/);
+  assert.match(api, /REQUEST_TIMEOUT_MS = 20_000/);
+  assert.match(api, /controller\.abort\(\)/);
   assert.match(
     api,
     /role === 'ADMIN' \? 'adminBootstrap' : 'studentBootstrap'/,

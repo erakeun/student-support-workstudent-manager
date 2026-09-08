@@ -21,6 +21,7 @@ const DEFAULT_AUTH_URL =
   'https://script.google.com/a/macros/hanyang.ac.kr/s/AKfycbxZkSjIyEFWqoMwwP_q6cY4hz0_GhB0SVbAiwCWFVTQOcPk2RT2zZWSQIircaWD0XBx_Q/exec';
 const APP_SESSION_KEY = 'workPortalAppSession';
 const HANYANG_TOKEN_KEY = 'workPortalHanyangToken';
+const REQUEST_TIMEOUT_MS = 20_000;
 
 export function getApiUrl() {
   if (typeof window === 'undefined') return '';
@@ -64,16 +65,30 @@ function storeAppSession(token: string) {
 async function request(action: string, payload: Record<string, unknown> = {}) {
   const apiUrl = getApiUrl();
   if (!apiUrl) throw new Error('Apps Script URL이 설정되지 않았습니다.');
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload }),
-    redirect: 'follow',
-  });
-  const result = (await response.json()) as ApiResult;
-  if (!result.ok)
-    throw new Error(result.error || '요청을 처리하지 못했습니다.');
-  return result;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, ...payload }),
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    const result = (await response.json()) as ApiResult;
+    if (!result.ok)
+      throw new Error(result.error || '요청을 처리하지 못했습니다.');
+    return result;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError')
+      throw new Error('서버 응답 시간이 초과되었습니다. 다시 시도해 주세요.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export async function loginStudent(loginId: string, password: string) {
