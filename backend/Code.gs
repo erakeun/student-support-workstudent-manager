@@ -5,6 +5,12 @@
  */
 const TIMEZONE = 'Asia/Seoul';
 const ALLOWED_DOMAIN = 'hanyang.ac.kr';
+const SESSION_TTL_SECONDS = 21600;
+const ALLOWED_PORTAL_URLS = [
+  'https://erakeun.github.io/student-support-workstudent-manager/',
+  'https://hanyang-erica-workstudent-portal.hyungkeun.chatgpt.site/',
+  'http://localhost:3000/',
+];
 const TABLES = {
   Parts: ['partId', 'partName', 'displayOrder', 'color', 'active'],
   Students: ['studentId', 'name', 'studentNumber', 'partId', 'workerType', 'startDate', 'endDate', 'taskSummary', 'workMemo', 'contactMemo', 'specialNote', 'substituteTasks', 'active'],
@@ -15,34 +21,69 @@ const TABLES = {
   Semesters: ['semesterId', 'semesterName', 'startDate', 'endDate', 'active'],
   Settings: ['key', 'value'],
 };
+const COLUMN_WIDTHS = {
+  Parts: [150, 110, 90, 90, 70],
+  Students: [135, 85, 105, 125, 115, 95, 95, 180, 180, 180, 220, 180, 70],
+  Schedules: [135, 125, 90, 90, 90, 95, 70],
+  WorkLogs: [135, 125, 100, 150, 150, 85, 95, 180],
+  Tasks: [135, 150, 220, 125, 125, 125, 180, 70],
+  Employees: [135, 90, 125, 90, 220, 70],
+  Semesters: [110, 150, 100, 100, 70],
+  Settings: [230, 430],
+};
 
 function doGet(e) {
-  return route_({ action: (e && e.parameter && e.parameter.action) || 'health' });
+  const request = Object.assign({}, (e && e.parameter) || {});
+  request.action = request.action || 'health';
+  if (request.action === 'authorize') return authorizePortal_(request.returnUrl);
+  return json_(route_(request));
 }
 
 function doPost(e) {
   let request = {};
   try { request = JSON.parse((e && e.postData && e.postData.contents) || '{}'); }
   catch (_) { return json_({ ok: false, error: '요청 본문이 올바른 JSON이 아닙니다.' }); }
-  return route_(request);
+  return json_(route_(request));
 }
 
 function route_(request) {
   try {
     const actions = {
       health: () => ({ ok: true, service: 'student-support-workstudent-manager', time: new Date().toISOString() }),
-      bootstrap: () => { requireHanyangUser_(); return { ok: true, data: readPortalData_() }; },
-      initializeDatabase: () => { requireAdmin_(); return { ok: true, message: initializeDatabase() }; },
-      upsertEntity: () => { requireAdmin_(); return { ok: true, record: upsertEntity_(request.table, request.record) }; },
-      deleteEntity: () => { requireAdmin_(); deleteEntity_(request.table, request.id); return { ok: true }; },
-      clockIn: () => { requireHanyangUser_(); return { ok: true, record: clockIn_(request.studentId, request.date) }; },
-      clockOut: () => { requireHanyangUser_(); return { ok: true, record: clockOut_(request.studentId, request.date) }; },
+      bootstrap: () => { requirePortalUser_(request.token); return { ok: true, data: readPortalData_() }; },
+      initializeDatabase: () => { requireAdmin_(request.token); return { ok: true, message: initializeDatabase() }; },
+      upsertEntity: () => { requireAdmin_(request.token); return { ok: true, record: upsertEntity_(request.table, request.record) }; },
+      deleteEntity: () => { requireAdmin_(request.token); deleteEntity_(request.table, request.id); return { ok: true }; },
+      clockIn: () => { requirePortalUser_(request.token); return { ok: true, record: clockIn_(request.studentId, request.date) }; },
+      clockOut: () => { requirePortalUser_(request.token); return { ok: true, record: clockOut_(request.studentId, request.date) }; },
     };
     if (!actions[request.action]) throw new Error('지원하지 않는 요청입니다.');
-    return json_(actions[request.action]());
+    return actions[request.action]();
   } catch (error) {
-    return json_({ ok: false, error: error.message || '서버 처리 중 오류가 발생했습니다.' });
+    return { ok: false, error: error.message || '서버 처리 중 오류가 발생했습니다.' };
   }
+}
+
+function authorizePortal_(returnUrl) {
+  const email = requireHanyangUser_();
+  const target = String(returnUrl || '');
+  const targetWithoutHash = target.split('#')[0];
+  const targetPath = targetWithoutHash.split('?')[0];
+  if (!ALLOWED_PORTAL_URLS.includes(targetPath)) {
+    return HtmlService.createHtmlOutput('허용되지 않은 포털 주소입니다.');
+  }
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put('portal-session:' + token, email, SESSION_TTL_SECONDS);
+  const redirectUrl = target.split('#')[0] + '#portalToken=' + encodeURIComponent(token);
+  return HtmlService.createHtmlOutput(
+    '<!doctype html><meta charset="utf-8"><title>한양대 계정 연결</title>' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<main style="font-family:Arial,sans-serif;max-width:520px;margin:64px auto;padding:28px;border:1px solid #d9e1e8;border-radius:12px">' +
+    '<h1 style="font-size:22px">한양대학교 계정 인증 완료</h1>' +
+    '<p>아래 버튼을 눌러 학생지원팀 근로관리 포털로 돌아가세요.</p>' +
+    '<a target="_top" href="' + redirectUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" ' +
+    'style="display:inline-block;margin-top:12px;padding:11px 18px;border-radius:8px;background:#075b9b;color:white;text-decoration:none;font-weight:bold">포털로 돌아가기</a></main>'
+  ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function json_(value) {
@@ -64,8 +105,13 @@ function initializeDatabase() {
     const headers = TABLES[name];
     if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, headers.length).setBackground('#075b9b').setFontColor('#ffffff').setFontWeight('bold');
-    sheet.autoResizeColumns(1, headers.length);
+    sheet.getRange(1, 1, 1, headers.length)
+      .setBackground('#e9eef3').setFontColor('#1f2937').setFontWeight('bold').setWrap(true);
+    sheet.getDataRange().setVerticalAlignment('middle').setWrap(true);
+    COLUMN_WIDTHS[name].forEach((width, index) => sheet.setColumnWidth(index + 1, width));
+    if (sheet.getLastRow() > 1 && ['Students', 'Schedules', 'WorkLogs', 'Tasks', 'Employees'].includes(name) && !sheet.getFilter()) {
+      sheet.getRange(1, 1, sheet.getLastRow(), headers.length).createFilter();
+    }
   });
   seedIfEmpty_('Parts', [
     ['student-support', '학생지원', 1, '#0b72b9', true],
@@ -105,7 +151,11 @@ function readTable_(name) {
     .filter(row => row.some(value => value !== ''))
     .map(row => headers.reduce((record, header, index) => {
       const value = row[index];
-      record[header] = value instanceof Date ? Utilities.formatDate(value, TIMEZONE, header.toLowerCase().includes('date') ? 'yyyy-MM-dd' : "yyyy-MM-dd'T'HH:mm:ssXXX") : value;
+      if (!(value instanceof Date)) record[header] = value;
+      else if (['startTime', 'endTime'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'HH:mm');
+      else if (['semesterId', 'value'].includes(header)) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-M');
+      else if (header.toLowerCase().includes('date')) record[header] = Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');
+      else record[header] = Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
       return record;
     }, {}));
 }
@@ -165,8 +215,14 @@ function requireHanyangUser_() {
   return email;
 }
 
-function requireAdmin_() {
-  const email = requireHanyangUser_();
+function requirePortalUser_(token) {
+  const cachedEmail = token && CacheService.getScriptCache().get('portal-session:' + String(token));
+  if (cachedEmail && cachedEmail.endsWith('@' + ALLOWED_DOMAIN)) return cachedEmail;
+  throw new Error('한양대학교 계정 연결이 필요합니다.');
+}
+
+function requireAdmin_(token) {
+  const email = requirePortalUser_(token);
   const row = readTable_('Settings').find(item => item.key === 'ADMIN_EMAILS');
   const admins = String((row && row.value) || '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean);
   if (!admins.includes(email)) throw new Error('관리자 권한이 필요합니다.');

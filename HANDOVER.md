@@ -26,7 +26,8 @@
 2. **배포 → 배포 관리**를 누릅니다.
 3. 연필 모양 **수정**을 누릅니다.
 4. 버전을 **새 버전**으로 바꾸고 **배포**를 누릅니다.
-5. `/exec` 주소가 바뀌면 `public/runtime-config.js` 한 곳만 수정합니다.
+5. 인증 배포는 **Hanyang University의 모든 사용자**, API 배포는 **모든 사용자** 접근을 유지합니다.
+6. `/exec` 주소가 바뀌면 `public/runtime-config.js`의 `AUTH_URL` 또는 `API_URL`을 수정합니다.
 
 ## 5. 담당자가 바뀌었을 때
 
@@ -48,7 +49,7 @@
 ## 8. 장애가 발생하면
 
 1. GitHub Actions의 Pages 배포 상태
-2. `public/runtime-config.js`의 API 주소
+2. `public/runtime-config.js`의 인증·API 주소와 두 배포의 접근 권한
 3. Apps Script의 **실행** 기록과 오류 메시지
 4. Google Sheet의 시트 이름과 첫 행 컬럼명
 5. 학교 계정 로그인 및 공유 권한

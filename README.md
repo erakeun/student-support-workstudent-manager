@@ -7,7 +7,8 @@
 - 실제 학번, 연락처, 개인 메모와 근무기록은 Google Sheet에만 저장합니다.
 - 이 저장소에는 예제 학생 A~H만 포함합니다.
 - 파트와 학기는 데이터로 관리하여 코드 수정 없이 추가할 수 있습니다.
-- `public/runtime-config.js` 한 곳에서 Apps Script URL을 관리합니다.
+- `public/runtime-config.js` 한 곳에서 인증용·API용 Apps Script URL을 관리합니다.
+- 포털 데이터는 한양대 계정 인증 후 발급되는 6시간짜리 단기 토큰이 있어야 조회·수정할 수 있습니다.
 
 ## 구성
 
@@ -28,4 +29,4 @@ npm run build
 npm run lint
 ```
 
-Google Sheet가 연결되지 않은 상태에서는 개인정보 없는 미리보기 데이터로 모든 주요 화면을 확인할 수 있습니다.
+운영 배포 URL은 `public/runtime-config.js`에 연결되어 있습니다. 왼쪽 아래 **한양대 계정으로 연결**을 누르면 내부 인증 배포가 단기 토큰을 발급하고, 토큰 검증용 API 배포가 Google Sheet 데이터를 제공합니다. 연결 전이나 인증 만료 뒤에는 개인정보 없는 미리보기 데이터가 유지됩니다.

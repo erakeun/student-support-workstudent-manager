@@ -14,23 +14,25 @@
 4. 편집기 상단 함수 목록에서 `initializeDatabase`를 선택하고 한 번 실행합니다.
 5. 권한 요청이 나오면 학교 계정으로 승인합니다.
 
-## 3. 웹앱 배포
+## 3. 웹앱 두 개 배포
 
-1. Apps Script 오른쪽 위 **배포 → 새 배포**를 누릅니다.
-2. 유형은 **웹 앱**을 선택합니다.
-3. 실행 사용자는 **웹 앱에 액세스하는 사용자**, 액세스 권한은 학교 조직 내부로 설정합니다.
-4. 배포 후 표시되는 `/exec` 주소를 복사합니다.
-5. `public/runtime-config.js`의 `API_URL`에 붙여 넣습니다.
+같은 Apps Script 프로젝트를 두 번 배포합니다. 두 배포 모두 실행 사용자는 **나**로 둡니다.
+
+1. **인증 배포**: 액세스 권한을 **Hanyang University의 모든 사용자**로 설정합니다.
+2. 인증 배포의 `/exec` 주소를 `public/runtime-config.js`의 `AUTH_URL`에 넣습니다.
+3. **API 배포**: 액세스 권한을 **모든 사용자**로 설정합니다.
+4. API 배포의 `/exec` 주소를 `public/runtime-config.js`의 `API_URL`에 넣습니다.
+5. API 배포는 공개 주소여도 유효한 단기 토큰 없이는 데이터를 반환하지 않습니다. `requirePortalUser_`의 토큰 검사를 제거하지 않습니다.
 
 ## 4. 사이트 확인
 
 1. GitHub 저장소의 **Actions**에서 Pages 배포가 끝났는지 확인합니다.
-2. 사이트를 열어 왼쪽 아래에 **운영 데이터 연결됨**이 표시되는지 확인합니다.
+2. 사이트를 열어 왼쪽 아래 **한양대 계정으로 연결**을 누르고, 돌아온 뒤 **운영 데이터 연결됨**이 표시되는지 확인합니다.
 3. 주간표와 학생 상세정보를 확인합니다.
 4. 테스트 학생으로 출근과 퇴근을 한 번 기록한 뒤 `WorkLogs` 시트에서 확인합니다.
 
 ## 문제가 생기면
 
-- 데이터가 안 보임: `runtime-config.js`의 Apps Script URL과 배포 권한 확인
+- 데이터가 안 보임: `runtime-config.js`의 `AUTH_URL`·`API_URL`과 두 배포의 접근 권한 확인
 - 권한 오류: 학교 계정 로그인 여부와 `Settings` 시트의 `ADMIN_EMAILS` 확인
 - 새 학기 자료가 안 보임: `Settings`의 `activeSemester`와 `Schedules.semesterId` 확인
