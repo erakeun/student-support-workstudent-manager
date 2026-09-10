@@ -16,6 +16,13 @@ export default function RootLayout({
     <html lang="ko">
       <head>
         <Script src={`${process.env.BASE_PATH || ''}/runtime-config.js`} strategy="beforeInteractive" />
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-REQY4913H3" strategy="afterInteractive" />
+        <Script id="ga4-init" strategy="afterInteractive">{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-REQY4913H3');
+        `}</Script>
       </head>
       <body>{children}</body>
     </html>
